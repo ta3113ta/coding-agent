@@ -1,0 +1,37 @@
+---
+description: Coding agent plugin architecture — core vs plugins boundary
+globs: "**/*.go"
+alwaysApply: true
+---
+
+# Agent Plugin Architecture
+
+Read [AGENTS.md](../AGENTS.md) for full guide. Summary:
+
+## Core (contracts only — no implementations)
+
+- `agent/` — agent loop
+- `types/` — neutral shared types
+- `llm/provider.go` — Provider interface + provider registry
+- `tools/tool.go` — Tool interface + Registry
+- `config/` — configuration
+- `plugin/` — Plugin interfaces + Bootstrap
+
+## Plugins (all implementations)
+
+- `plugins/tools/*` — tools
+- `plugins/providers/*` — LLM providers
+- `plugins/prompt/*` — system prompts
+- `plugins/runner/*` — REPL / runners
+- Register in `plugins/builtin/builtin.go` only
+
+## Before adding code
+
+1. Contract or implementation?
+2. Implementation → `plugins/`, then register in `builtin.Default`
+3. Never add tool/provider/prompt implementations to `agent/`, `llm/` (except types), or `tools/` (except interface)
+4. Avoid import cycles: `plugin` uses `AgentHandle` interface, not `*agent.Agent`
+
+## Adding a tool (minimal)
+
+Create `plugins/tools/foo/foo.go` with `Tool` + `Plugin`, append `foo.Plugin{}` to `builtin.Default`.

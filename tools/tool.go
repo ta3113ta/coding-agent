@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/anthropics/anthropic-sdk-go"
+	"coding-agent/types"
 )
 
 // Tool คือ interface ที่ทุก tool ต้อง implement
@@ -13,7 +13,7 @@ type Tool interface {
 	// Name ที่ LLM ใช้เรียก
 	Name() string
 	// Definition คือ schema ที่ส่งให้ LLM รู้ว่า tool นี้ทำอะไร รับ param อะไร
-	Definition() anthropic.ToolParam
+	Definition() types.ToolDefinition
 	// Execute รับ raw JSON input จาก LLM แล้วคืนผลลัพธ์เป็น string
 	// คืน error เพื่อให้ loop จัดการ (ส่ง error กลับให้ LLM แก้เอง)
 	Execute(input json.RawMessage) (string, error)
@@ -27,17 +27,20 @@ type Registry struct {
 func NewRegistry(ts ...Tool) *Registry {
 	r := &Registry{tools: make(map[string]Tool)}
 	for _, t := range ts {
-		r.tools[t.Name()] = t
+		r.Register(t)
 	}
 	return r
 }
 
-// Definitions คืน schema ทั้งหมดในรูปแบบที่ SDK ต้องการ
-func (r *Registry) Definitions() []anthropic.ToolUnionParam {
-	out := make([]anthropic.ToolUnionParam, 0, len(r.tools))
+func (r *Registry) Register(t Tool) {
+	r.tools[t.Name()] = t
+}
+
+// Definitions คืน schema ทั้งหมดในรูปแบบที่ provider ใช้ได้
+func (r *Registry) Definitions() []types.ToolDefinition {
+	out := make([]types.ToolDefinition, 0, len(r.tools))
 	for _, t := range r.tools {
-		def := t.Definition()
-		out = append(out, anthropic.ToolUnionParam{OfTool: &def})
+		out = append(out, t.Definition())
 	}
 	return out
 }

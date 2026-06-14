@@ -2,29 +2,77 @@
 
 Minimal coding agent ที่รันได้จริง แกนกลางคือ **agent loop**: วน LLM + tools จน LLM หยุดเรียก tool
 
+ออกแบบแบบ **minimal core + compile-time plugins** — ดู [AGENTS.md](AGENTS.md) สำหรับวิธีเพิ่ม feature ใหม่
+
 ## โครงสร้าง
 
 ```
 coding-agent/
-├── go.mod
-├── main.go              # REPL entry point + ลงทะเบียน tool
+├── main.go                          # bootstrap only
+├── AGENTS.md                        # architecture guide
+├── .cursor/rules/
+│   └── agent-architecture.mdc       # Cursor rule
+├── config/
+│   └── config.go                    # env + flag config
+├── plugin/
+│   ├── plugin.go                    # Plugin interfaces + App
+│   └── registry.go                  # Bootstrap
 ├── agent/
-│   └── agent.go         # ❤️ agent loop (อ่านตรงนี้ก่อน)
-└── tools/
-    ├── tool.go          # Tool interface + Registry (dispatch ตามชื่อ)
-    ├── read_file.go     # อ่านไฟล์ + offset/limit
-    ├── write_file.go    # เขียนไฟล์ทั้งไฟล์
-    ├── list_dir.go      # ls
-    └── run_bash.go      # รัน bash + timeout + truncate output
+│   └── agent.go                     # agent loop (core)
+├── types/
+│   └── types.go                     # neutral shared types
+├── llm/
+│   └── provider.go                  # Provider interface + registry
+├── tools/
+│   └── tool.go                      # Tool interface + Registry
+└── plugins/
+    ├── builtin/builtin.go           # default plugin registry
+    ├── tools/                       # readfile, writefile, listdir, runbash
+    ├── providers/                   # anthropic, openrouter
+    ├── prompt/coding/               # system prompt
+    └── runner/repl/                 # stdin REPL
 ```
 
 ## วิธีรัน
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...
-go mod tidy      # ดึง SDK
+cp .env-example .env   # แล้วใส่ API key
+go mod tidy
 go run .
 ```
+
+### Anthropic (default)
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+go run .
+```
+
+### OpenRouter ผ่าน env
+
+```bash
+export LLM_PROVIDER=openrouter
+export OPENROUTER_API_KEY=sk-or-...
+go run .
+```
+
+### OpenRouter ผ่าน CLI flags
+
+```bash
+go run . --provider openrouter --model openai/gpt-4o
+```
+
+### ตัวแปร config
+
+| ตัวแปร / flag | ค่าเริ่มต้น | คำอธิบาย |
+|---|---|---|
+| `LLM_PROVIDER` / `--provider` | `anthropic` | `anthropic` หรือ `openrouter` |
+| `ANTHROPIC_API_KEY` | — | API key สำหรับ Anthropic |
+| `ANTHROPIC_MODEL` / `--model` | `claude-sonnet-4-5` | model สำหรับ Anthropic |
+| `OPENROUTER_API_KEY` | — | API key สำหรับ OpenRouter |
+| `OPENROUTER_MODEL` / `--model` | `anthropic/claude-sonnet-4` | model สำหรับ OpenRouter |
+
+CLI flags จะ override ค่าจาก env
 
 แล้วลองสั่ง เช่น:
 - `สร้างไฟล์ fizzbuzz.go ที่พิมพ์ 1-20 แล้ว build ให้ดูว่าผ่าน`
@@ -34,27 +82,22 @@ go run .
 
 ```
 วน:
-  1. เรียก LLM ด้วย messages + tool definitions
-  2. แปลง response → param blocks เก็บเข้า history
-  3. ถ้ามี tool_use → รัน tool → เก็บผลเป็น tool_result
-  4. ไม่มี tool_use → จบ คืน text
-  5. ส่ง tool_result กลับเข้า history → วนต่อ
+  1. เรียก provider.Complete ด้วย messages + tool definitions
+  2. เก็บ assistant response (text + tool calls) เข้า history
+  3. ถ้ามี tool call → รัน tool → เก็บผลเป็น role=tool message
+  4. ไม่มี tool call → จบ คืน text
+  5. ส่ง tool results กลับเข้า history → วนต่อ
 ```
 
-ทั้งหมดของ opencode/Claude Code คือ loop นี้ + ของห่อรอบๆ
+## เพิ่ม feature ใหม่
 
-## จุดออกแบบที่ควรสังเกต
+เพิ่ม plugin ใน `plugins/` แล้วลงทะเบียนใน `plugins/builtin/builtin.go` — ดูรายละเอียดใน [AGENTS.md](AGENTS.md)
 
-- **Tool เป็น interface** — เพิ่ม tool ใหม่แค่ implement 3 method แล้ว append ใน `main.go`
-- **error ของ tool ไม่ทำให้ loop พัง** — ส่ง error กลับเป็น tool_result ให้ LLM แก้เอง (isError=true)
-- **กัน context พอง** — `read_file` มี offset/limit, `run_bash` truncate output หัว-ท้าย
-- **assistant turn ประกอบเอง** — SDK รุ่นนี้ไม่มี `resp.ToParam()` จึง map content blocks → param blocks เอง
+## Phase 2 ต่อยอด
 
-## Phase 2 ต่อยอด (ดู comment ในโค้ด)
-
-1. `str_replace` tool — แก้ไฟล์บางส่วน ไม่เขียนทั้งไฟล์ (ประหยัด token มหาศาล)
-2. **Prompt caching** — cache system prompt + tool defs + history ลด cost ~90%
-3. **Permission layer** — ขออนุมัติก่อนรันคำสั่งอันตราย
-4. **Context compaction** — สรุป history เมื่อใกล้เต็ม window
-5. **Parallel tool execution** — รัน tool หลายตัวพร้อมกันด้วย goroutine
-6. **Streaming** — `client.Messages.NewStreaming` เพื่อ UX
+1. `str_replace` tool plugin
+2. **Prompt caching**
+3. **Permission hook plugin**
+4. **Context compaction**
+5. **Parallel tool execution**
+6. **Streaming runner plugin**

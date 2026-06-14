@@ -1,4 +1,4 @@
-package tools
+package listdir
 
 import (
 	"encoding/json"
@@ -6,23 +6,21 @@ import (
 	"os"
 	"strings"
 
-	"github.com/anthropics/anthropic-sdk-go"
+	"coding-agent/plugin"
+	"coding-agent/tools"
+	"coding-agent/types"
 )
 
-// ListDir แสดงรายการไฟล์/โฟลเดอร์ใน path
 type ListDir struct{}
 
 func (ListDir) Name() string { return "list_dir" }
 
-func (ListDir) Definition() anthropic.ToolParam {
-	return anthropic.ToolParam{
+func (ListDir) Definition() types.ToolDefinition {
+	return types.ToolDefinition{
 		Name:        "list_dir",
-		Description: anthropic.String("แสดงไฟล์และโฟลเดอร์ใน path ที่ระบุ ไม่ใส่ path = directory ปัจจุบัน"),
-		InputSchema: anthropic.ToolInputSchemaParam{
-			Properties: map[string]any{
-				"path": map[string]any{"type": "string", "description": "path ของ directory ไม่ใส่ = '.'"},
-			},
-			Required: []string{},
+		Description: "แสดงไฟล์และโฟลเดอร์ใน path ที่ระบุ ไม่ใส่ path = directory ปัจจุบัน",
+		Properties: map[string]any{
+			"path": map[string]any{"type": "string", "description": "path ของ directory ไม่ใส่ = '.'"},
 		},
 	}
 }
@@ -57,3 +55,14 @@ func (ListDir) Execute(input json.RawMessage) (string, error) {
 	}
 	return b.String(), nil
 }
+
+type Plugin struct{}
+
+func (Plugin) Name() string { return "tools/listdir" }
+
+func (Plugin) Register(app *plugin.App) error {
+	plugin.RegisterTools(app, ListDir{})
+	return nil
+}
+
+var _ tools.Tool = ListDir{}
