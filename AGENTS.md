@@ -23,6 +23,7 @@ plugins/
 ├── tools/                   # one package per tool
 ├── providers/               # one package per LLM provider
 ├── prompt/                  # system prompt contributors
+├── skills/                  # skill discovery + index injection
 └── runner/                  # REPL, one-shot, HTTP, etc.
 ```
 
@@ -81,6 +82,25 @@ func (Plugin) Register(app *plugin.App) error {
 | `write_file` | สร้างไฟล์ใหม่ หรือ fallback |
 
 ดู rationale และ alternatives ใน [ADR-0001](docs/adr/0001-str-replace-for-file-editing.md)
+
+## Skills
+
+Agent discover `SKILL.md` ตอน bootstrap จาก project (`.cursor/skills/`), personal (`~/.cursor/skills/`), และ bundled (`plugins/skills/builtin/`) แล้ว inject skill index เข้า system prompt — agent โหลดเนื้อหาเต็มด้วย `read_file` เมื่อ task relevant
+
+ดู rationale และ alternatives ใน [ADR-0002](docs/adr/0002-load-skill-two-phase-discovery.md)
+
+## Architecture Decision Records
+
+Feature ใหม่ที่กระทบ architecture (tool contract, agent loop, bootstrap flow, discovery model ฯลฯ) ต้องมี ADR ใน `docs/adr/` ก่อน implement
+
+รูปแบบ: `NNNN-short-title.md` — ดู [ADR-0001](docs/adr/0001-str-replace-for-file-editing.md)
+
+Template:
+- **Status** / **Date**
+- **Context** — ปัญหาที่ต้องแก้
+- **Decision** — สิ่งที่เลือกทำ
+- **Alternatives Considered** — ทางเลือกอื่น + เหตุผลที่ไม่เลือก
+- **Consequences** — ข้อดี/ข้อเสีย
 
 ## How to add a new LLM provider
 
@@ -147,3 +167,4 @@ main.go
 2. Is this an **implementation**? → `plugins/`
 3. Did you register it in `plugins/builtin/builtin.go`?
 4. Did you avoid importing `agent` from `plugin`? (use `plugin.AgentHandle` instead)
+5. Feature ใหม่ที่มี architectural impact → เขียน ADR ใน `docs/adr/` แล้วลิงก์จาก AGENTS.md หรือ README.md

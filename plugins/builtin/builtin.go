@@ -6,6 +6,7 @@ import (
 	"coding-agent/plugins/providers/anthropic"
 	"coding-agent/plugins/providers/openrouter"
 	"coding-agent/plugins/runner/repl"
+	"coding-agent/plugins/skills"
 	"coding-agent/plugins/tools/listdir"
 	"coding-agent/plugins/tools/readfile"
 	"coding-agent/plugins/tools/runbash"
@@ -21,6 +22,7 @@ var Default = []plugin.Plugin{
 	strreplace.Plugin{},
 	listdir.Plugin{},
 	runbash.Plugin{},
+	&skills.Plugin{},
 	anthropic.Plugin{},
 	openrouter.Plugin{},
 	coding.Plugin{},

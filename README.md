@@ -25,10 +25,13 @@ coding-agent/
 │   └── provider.go                  # Provider interface + registry
 ├── tools/
 │   └── tool.go                      # Tool interface + Registry
+├── skills/
+│   └── ...                          # skill discovery contract (parse, discover, registry)
 └── plugins/
     ├── builtin/builtin.go           # default plugin registry
     ├── tools/                       # readfile, writefile, strreplace, listdir, runbash
     ├── providers/                   # anthropic, openrouter
+    ├── skills/builtin/              # bundled SKILL.md files
     ├── prompt/coding/               # system prompt
     └── runner/repl/                 # stdin REPL
 ```
@@ -71,6 +74,7 @@ go run . --provider openrouter --model openai/gpt-4o
 | `ANTHROPIC_MODEL` / `--model` | `claude-sonnet-4-5` | model สำหรับ Anthropic |
 | `OPENROUTER_API_KEY` | — | API key สำหรับ OpenRouter |
 | `OPENROUTER_MODEL` / `--model` | `anthropic/claude-sonnet-4` | model สำหรับ OpenRouter |
+| `SKILLS_ENABLE_PERSONAL` | `true` | เปิด/ปิด discovery จาก `~/.cursor/skills/` (`false` เพื่อปิด) |
 
 CLI flags จะ override ค่าจาก env
 
@@ -91,13 +95,15 @@ CLI flags จะ override ค่าจาก env
 
 ## เพิ่ม feature ใหม่
 
-เพิ่ม plugin ใน `plugins/` แล้วลงทะเบียนใน `plugins/builtin/builtin.go` — ดูรายละเอียดใน [AGENTS.md](AGENTS.md)
+1. เขียน ADR ใน `docs/adr/` ถ้า feature กระทบ architecture (ดู [AGENTS.md](AGENTS.md#architecture-decision-records))
+2. เพิ่ม plugin ใน `plugins/` แล้วลงทะเบียนใน `plugins/builtin/builtin.go`
 
 ## Phase 2 ต่อยอด
 
 1. ~~`str_replace` tool plugin~~ — [ADR-0001](docs/adr/0001-str-replace-for-file-editing.md)
-2. **Prompt caching**
-3. **Permission hook plugin**
-4. **Context compaction**
-5. **Parallel tool execution**
-6. **Streaming runner plugin**
+2. ~~Load skill (two-phase discovery)~~ — [ADR-0002](docs/adr/0002-load-skill-two-phase-discovery.md)
+3. **Prompt caching**
+4. **Permission hook plugin**
+5. **Context compaction**
+6. **Parallel tool execution**
+7. **Streaming runner plugin**
