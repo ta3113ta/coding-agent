@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"coding-agent/plugin"
+	"coding-agent/plugins/skills"
 	"coding-agent/plugins/prompt/coding"
 	"coding-agent/plugins/providers/anthropic"
 	"coding-agent/plugins/providers/openrouter"
