@@ -1,0 +1,52 @@
+package tools
+
+import (
+	"encoding/json"
+	"fmt"
+
+	"github.com/anthropics/anthropic-sdk-go"
+)
+
+// Tool คือ interface ที่ทุก tool ต้อง implement
+// แยก "นิยาม" (schema ที่ส่งให้ LLM) ออกจาก "การทำงานจริง" (Execute)
+type Tool interface {
+	// Name ที่ LLM ใช้เรียก
+	Name() string
+	// Definition คือ schema ที่ส่งให้ LLM รู้ว่า tool นี้ทำอะไร รับ param อะไร
+	Definition() anthropic.ToolParam
+	// Execute รับ raw JSON input จาก LLM แล้วคืนผลลัพธ์เป็น string
+	// คืน error เพื่อให้ loop จัดการ (ส่ง error กลับให้ LLM แก้เอง)
+	Execute(input json.RawMessage) (string, error)
+}
+
+// Registry เก็บ tool ทั้งหมด ใช้ dispatch ตามชื่อ
+type Registry struct {
+	tools map[string]Tool
+}
+
+func NewRegistry(ts ...Tool) *Registry {
+	r := &Registry{tools: make(map[string]Tool)}
+	for _, t := range ts {
+		r.tools[t.Name()] = t
+	}
+	return r
+}
+
+// Definitions คืน schema ทั้งหมดในรูปแบบที่ SDK ต้องการ
+func (r *Registry) Definitions() []anthropic.ToolUnionParam {
+	out := make([]anthropic.ToolUnionParam, 0, len(r.tools))
+	for _, t := range r.tools {
+		def := t.Definition()
+		out = append(out, anthropic.ToolUnionParam{OfTool: &def})
+	}
+	return out
+}
+
+// Dispatch หา tool ตามชื่อแล้วเรียก Execute
+func (r *Registry) Dispatch(name string, input json.RawMessage) (string, error) {
+	t, ok := r.tools[name]
+	if !ok {
+		return "", fmt.Errorf("unknown tool: %s", name)
+	}
+	return t.Execute(input)
+}
