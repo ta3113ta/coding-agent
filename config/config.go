@@ -17,11 +17,12 @@ const (
 )
 
 type Config struct {
-	Provider         ProviderName
-	AnthropicAPIKey  string
-	AnthropicModel   string
-	OpenRouterAPIKey string
-	OpenRouterModel  string
+	Provider             ProviderName
+	AnthropicAPIKey      string
+	AnthropicModel       string
+	OpenRouterAPIKey     string
+	OpenRouterModel      string
+	SkillsEnablePersonal bool
 }
 
 func LoadFromEnv() Config {
@@ -41,11 +42,27 @@ func LoadFromEnv() Config {
 	}
 
 	return Config{
-		Provider:         provider,
-		AnthropicAPIKey:  strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")),
-		AnthropicModel:   anthropicModel,
-		OpenRouterAPIKey: strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY")),
-		OpenRouterModel:  openRouterModel,
+		Provider:             provider,
+		AnthropicAPIKey:      strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")),
+		AnthropicModel:       anthropicModel,
+		OpenRouterAPIKey:     strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY")),
+		OpenRouterModel:      openRouterModel,
+		SkillsEnablePersonal: parseBoolEnv("SKILLS_ENABLE_PERSONAL", true),
+	}
+}
+
+func parseBoolEnv(key string, defaultVal bool) bool {
+	raw := strings.TrimSpace(strings.ToLower(os.Getenv(key)))
+	if raw == "" {
+		return defaultVal
+	}
+	switch raw {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return defaultVal
 	}
 }
 

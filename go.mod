@@ -5,6 +5,7 @@ go 1.26
 require (
 	github.com/OpenRouterTeam/go-sdk v0.4.1
 	github.com/anthropics/anthropic-sdk-go v1.50.1
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (

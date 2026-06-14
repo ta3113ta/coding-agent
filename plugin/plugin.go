@@ -5,6 +5,7 @@ import (
 
 	"coding-agent/config"
 	"coding-agent/llm"
+	"coding-agent/skills"
 	"coding-agent/tools"
 )
 
@@ -14,6 +15,7 @@ type App struct {
 	Prompt   string
 	Provider llm.Provider
 	Runner   Runner
+	Skills   *skills.Registry
 }
 
 type Plugin interface {
