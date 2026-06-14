@@ -9,6 +9,7 @@ import (
 	"coding-agent/plugins/tools/listdir"
 	"coding-agent/plugins/tools/readfile"
 	"coding-agent/plugins/tools/runbash"
+	"coding-agent/plugins/tools/strreplace"
 	"coding-agent/plugins/tools/writefile"
 )
 
@@ -17,6 +18,7 @@ import (
 var Default = []plugin.Plugin{
 	readfile.Plugin{},
 	writefile.Plugin{},
+	strreplace.Plugin{},
 	listdir.Plugin{},
 	runbash.Plugin{},
 	anthropic.Plugin{},

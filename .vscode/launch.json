@@ -11,7 +11,8 @@
             "mode": "auto",
             "console": "integratedTerminal",
             "program": "${workspaceRoot}/main.go",
-            "envFile": "${workspaceRoot}/.env"
+            "envFile": "${workspaceRoot}/.env",
+            "cwd": "${workspaceRoot}"
         }
     ]
 }

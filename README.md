@@ -27,7 +27,7 @@ coding-agent/
 │   └── tool.go                      # Tool interface + Registry
 └── plugins/
     ├── builtin/builtin.go           # default plugin registry
-    ├── tools/                       # readfile, writefile, listdir, runbash
+    ├── tools/                       # readfile, writefile, strreplace, listdir, runbash
     ├── providers/                   # anthropic, openrouter
     ├── prompt/coding/               # system prompt
     └── runner/repl/                 # stdin REPL
@@ -95,7 +95,7 @@ CLI flags จะ override ค่าจาก env
 
 ## Phase 2 ต่อยอด
 
-1. `str_replace` tool plugin
+1. ~~`str_replace` tool plugin~~ — [ADR-0001](docs/adr/0001-str-replace-for-file-editing.md)
 2. **Prompt caching**
 3. **Permission hook plugin**
 4. **Context compaction**

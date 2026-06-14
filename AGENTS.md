@@ -72,6 +72,16 @@ func (Plugin) Register(app *plugin.App) error {
 }
 ```
 
+## File editing tools
+
+| Tool | ใช้เมื่อ |
+|------|---------|
+| `read_file` | อ่าน/สำรวจไฟล์ (พร้อมเลขบรรทัด) |
+| `str_replace` | แก้ไฟล์ที่มีอยู่ (primary) |
+| `write_file` | สร้างไฟล์ใหม่ หรือ fallback |
+
+ดู rationale และ alternatives ใน [ADR-0001](docs/adr/0001-str-replace-for-file-editing.md)
+
 ## How to add a new LLM provider
 
 1. Create `plugins/providers/myprovider/myprovider.go`
