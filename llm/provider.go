@@ -23,7 +23,7 @@ func RegisterProvider(name config.ProviderName, f Factory) {
 func NewProvider(cfg config.Config) (Provider, error) {
 	f, ok := registry[cfg.Provider]
 	if !ok {
-		return nil, fmt.Errorf("provider ไม่รองรับ: %s", cfg.Provider)
+		return nil, fmt.Errorf("unsupported provider: %s", cfg.Provider)
 	}
 	return f(cfg)
 }

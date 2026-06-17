@@ -28,7 +28,7 @@ func Parse(content []byte) (Meta, string, error) {
 	text := string(content)
 	text = strings.TrimPrefix(text, "\ufeff")
 	if !strings.HasPrefix(text, "---") {
-		return Meta{}, "", fmt.Errorf("SKILL.md ต้องขึ้นต้นด้วย YAML frontmatter (---)")
+		return Meta{}, "", fmt.Errorf("SKILL.md must start with YAML frontmatter (---)")
 	}
 
 	rest := text[3:]
@@ -44,7 +44,7 @@ func Parse(content []byte) (Meta, string, error) {
 
 	end := strings.Index(rest, "\n---")
 	if end < 0 {
-		return Meta{}, "", fmt.Errorf("SKILL.md frontmatter ไม่ปิดด้วย ---")
+		return Meta{}, "", fmt.Errorf("SKILL.md frontmatter is not closed with ---")
 	}
 
 	fmRaw := rest[:end]
@@ -69,19 +69,19 @@ func Parse(content []byte) (Meta, string, error) {
 
 func validateMeta(meta Meta) error {
 	if meta.Name == "" {
-		return fmt.Errorf("frontmatter ต้องมี name")
+		return fmt.Errorf("frontmatter must include name")
 	}
 	if utf8.RuneCountInString(meta.Name) > 64 {
-		return fmt.Errorf("name ยาวเกิน 64 ตัวอักษร")
+		return fmt.Errorf("name exceeds 64 characters")
 	}
 	if !namePattern.MatchString(meta.Name) {
-		return fmt.Errorf("name ต้องเป็น lowercase letters, numbers, hyphens เท่านั้น")
+		return fmt.Errorf("name must contain only lowercase letters, numbers, and hyphens")
 	}
 	if meta.Description == "" {
-		return fmt.Errorf("frontmatter ต้องมี description")
+		return fmt.Errorf("frontmatter must include description")
 	}
 	if utf8.RuneCountInString(meta.Description) > 1024 {
-		return fmt.Errorf("description ยาวเกิน 1024 ตัวอักษร")
+		return fmt.Errorf("description exceeds 1024 characters")
 	}
 	return nil
 }

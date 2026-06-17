@@ -95,14 +95,14 @@ func (c Config) Validate() error {
 	switch c.Provider {
 	case ProviderAnthropic:
 		if c.AnthropicAPIKey == "" {
-			return fmt.Errorf("ต้องตั้งค่า ANTHROPIC_API_KEY ก่อน")
+			return fmt.Errorf("ANTHROPIC_API_KEY must be set")
 		}
 	case ProviderOpenRouter:
 		if c.OpenRouterAPIKey == "" {
-			return fmt.Errorf("ต้องตั้งค่า OPENROUTER_API_KEY ก่อน")
+			return fmt.Errorf("OPENROUTER_API_KEY must be set")
 		}
 	default:
-		return fmt.Errorf("provider ไม่รองรับ: %s (ใช้ anthropic หรือ openrouter)", c.Provider)
+		return fmt.Errorf("unsupported provider: %s (use anthropic or openrouter)", c.Provider)
 	}
 	return nil
 }

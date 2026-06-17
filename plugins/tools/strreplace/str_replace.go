@@ -54,7 +54,7 @@ func (StrReplace) Execute(input json.RawMessage) (string, error) {
 		return "", err
 	}
 	if args.OldString == "" {
-		return "", fmt.Errorf("old_string ต้องไม่ว่าง")
+		return "", fmt.Errorf("old_string must not be empty")
 	}
 
 	info, err := os.Stat(args.Path)
@@ -78,13 +78,13 @@ func (StrReplace) Execute(input json.RawMessage) (string, error) {
 	switch {
 	case count == 0:
 		return "", fmt.Errorf(
-			"old_string not found in %s. อ่านใหม่ด้วย read_file ก่อนลองอีกครั้ง",
+			"old_string not found in %s. re-read with read_file before trying again",
 			args.Path,
 		)
 	case count > 1 && !args.ReplaceAll:
 		lines := findMatchLines(normalized, oldNorm)
 		return "", fmt.Errorf(
-			"old_string matched %d times at lines %v. เพิ่มบริบทใน old_string หรือตั้ง replace_all=true",
+			"old_string matched %d times at lines %v. add context to old_string or set replace_all=true",
 			count, lines,
 		)
 	}

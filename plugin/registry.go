@@ -38,11 +38,11 @@ func Bootstrap(cfg config.Config, plugins ...Plugin) (*App, error) {
 	}
 
 	if app.Prompt == "" {
-		return nil, fmt.Errorf("ไม่มี prompt plugin ลงทะเบียน")
+		return nil, fmt.Errorf("no prompt plugin registered")
 	}
 
 	if app.Runner == nil {
-		return nil, fmt.Errorf("ไม่มี runner plugin ลงทะเบียน")
+		return nil, fmt.Errorf("no runner plugin registered")
 	}
 
 	return app, nil

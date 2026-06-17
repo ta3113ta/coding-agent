@@ -85,7 +85,7 @@ CLI flags จะ override ค่าจาก env
 ## แกนของ loop (agent/agent.go)
 
 ```
-วน:
+loop:
   1. เรียก provider.Complete ด้วย messages + tool definitions
   2. เก็บ assistant response (text + tool calls) เข้า history
   3. ถ้ามี tool call → รัน tool → เก็บผลเป็น role=tool message
@@ -93,17 +93,32 @@ CLI flags จะ override ค่าจาก env
   5. ส่ง tool results กลับเข้า history → วนต่อ
 ```
 
-## เพิ่ม feature ใหม่
+## When adding new feature
 
 1. เขียน ADR ใน `docs/adr/` ถ้า feature กระทบ architecture (ดู [AGENTS.md](AGENTS.md#architecture-decision-records))
 2. เพิ่ม plugin ใน `plugins/` แล้วลงทะเบียนใน `plugins/builtin/builtin.go`
 
-## Phase 2 ต่อยอด
+## Road map
 
-1. ~~`str_replace` tool plugin~~ — [ADR-0001](docs/adr/0001-str-replace-for-file-editing.md)
-2. ~~Load skill (two-phase discovery)~~ — [ADR-0002](docs/adr/0002-load-skill-two-phase-discovery.md)
-3. **Prompt caching**
-4. **Permission hook plugin**
-5. **Context compaction**
-6. **Parallel tool execution**
-7. **Streaming runner plugin**
+- ~~`str_replace` tool plugin~~ — [ADR-0001](docs/adr/0001-str-replace-for-file-editing.md)
+- ~~Load skill (two-phase discovery)~~ — [ADR-0002](docs/adr/0002-load-skill-two-phase-discovery.md)
+- **Streaming runner plugin**
+- **Prompt caching**
+- **Session management**
+- **Permission hook plugin**
+- **Context compaction**
+- **Sub-agents / task spawning**
+- **External search: web fetch + web search**
+- **Parallel tool execution**
+- **internal search: grep*
+- **Thinking level / reasoning tokens**
+- **TODO / plan tracking**
+- **Error recovery / retry policy**
+- **Diff preview before apply**
+- **Codebase indexing + vector db**
+- **LSP integration**
+- **Hashline edit** File state / staleness check 
+- **Cost / token tracking**
+- **MCP client**
+- **full customize**
+

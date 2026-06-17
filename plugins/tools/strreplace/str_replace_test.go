@@ -205,7 +205,7 @@ func TestStrReplace_EmptyOldString(t *testing.T) {
 		"new_string": "y",
 	})
 	_, err := tool.Execute(input)
-	if err == nil || !strings.Contains(err.Error(), "old_string ต้องไม่ว่าง") {
+	if err == nil || !strings.Contains(err.Error(), "old_string must not be empty") {
 		t.Fatalf("expected empty old_string error, got: %v", err)
 	}
 }
