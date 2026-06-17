@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	openrouter "github.com/OpenRouterTeam/go-sdk"
 	"github.com/OpenRouterTeam/go-sdk/models/components"
@@ -32,21 +33,35 @@ func (p *provider) Complete(ctx context.Context, req types.CompleteRequest) (*ty
 		maxTokens = 8096
 	}
 
+	messages := buildOpenRouterMessages(req)
+	chatReq := components.ChatRequest{
+		Model:     openrouter.Pointer(req.Model),
+		MaxTokens: optionalnullable.From(openrouter.Pointer(int64(maxTokens))),
+		Messages:  messages,
+		Tools:     toOpenRouterTools(req.Tools),
+	}
+
+	if req.OnStream == nil {
+		chatReq.Stream = openrouter.Pointer(false)
+		return p.completeNonStreaming(ctx, chatReq)
+	}
+
+	chatReq.Stream = openrouter.Pointer(true)
+	return p.completeStreaming(ctx, req, chatReq)
+}
+
+func buildOpenRouterMessages(req types.CompleteRequest) []components.ChatMessages {
 	messages := []components.ChatMessages{
 		components.CreateChatMessagesSystem(components.ChatSystemMessage{
 			Content: components.CreateChatSystemMessageContentStr(req.SystemPrompt),
 			Role:    components.ChatSystemMessageRoleSystem,
 		}),
 	}
-	messages = append(messages, toOpenRouterMessages(req.Messages)...)
+	return append(messages, toOpenRouterMessages(req.Messages)...)
+}
 
-	res, err := p.client.Chat.Send(ctx, components.ChatRequest{
-		Model:     openrouter.Pointer(req.Model),
-		MaxTokens: optionalnullable.From(openrouter.Pointer(int64(maxTokens))),
-		Messages:  messages,
-		Tools:     toOpenRouterTools(req.Tools),
-		Stream:    openrouter.Pointer(false),
-	})
+func (p *provider) completeNonStreaming(ctx context.Context, chatReq components.ChatRequest) (*types.CompleteResponse, error) {
+	res, err := p.client.Chat.Send(ctx, chatReq)
 	if err != nil {
 		return nil, fmt.Errorf("openrouter: %w", err)
 	}
@@ -74,6 +89,75 @@ func (p *provider) Complete(ctx context.Context, req types.CompleteRequest) (*ty
 			ID:    tc.GetID(),
 			Name:  fn.Name,
 			Input: json.RawMessage(fn.Arguments),
+		})
+	}
+	return out, nil
+}
+
+type openRouterToolCallAcc struct {
+	id        string
+	name      string
+	arguments strings.Builder
+}
+
+func (p *provider) completeStreaming(ctx context.Context, req types.CompleteRequest, chatReq components.ChatRequest) (*types.CompleteResponse, error) {
+	res, err := p.client.Chat.Send(ctx, chatReq)
+	if err != nil {
+		return nil, fmt.Errorf("openrouter: %w", err)
+	}
+
+	if res.Type != operations.SendChatCompletionRequestResponseTypeEventStream || res.EventStream == nil {
+		return nil, fmt.Errorf("openrouter: expected event stream")
+	}
+	defer res.EventStream.Close()
+
+	out := &types.CompleteResponse{}
+	var toolCalls []*openRouterToolCallAcc
+
+	for res.EventStream.Next() {
+		chunk := res.EventStream.Value()
+		if chunk == nil {
+			continue
+		}
+		data := chunk.GetData()
+		for _, choice := range (&data).GetChoices() {
+			delta := choice.GetDelta()
+			if content, ok := delta.GetContent().GetOrZero(); ok && content != "" {
+				out.Text += content
+				req.OnStream(types.StreamEvent{TextDelta: content})
+			}
+			for _, tc := range delta.GetToolCalls() {
+				idx := tc.GetIndex()
+				for int64(len(toolCalls)) <= idx {
+					toolCalls = append(toolCalls, &openRouterToolCallAcc{})
+				}
+				acc := toolCalls[idx]
+				if id := tc.GetID(); id != nil {
+					acc.id = *id
+				}
+				if fn := tc.GetFunction(); fn != nil {
+					if name := fn.GetName(); name != nil {
+						acc.name = *name
+					}
+					if args := fn.GetArguments(); args != nil {
+						acc.arguments.WriteString(*args)
+					}
+				}
+			}
+		}
+	}
+	if err := res.EventStream.Err(); err != nil {
+		return nil, fmt.Errorf("openrouter stream: %w", err)
+	}
+
+	for _, acc := range toolCalls {
+		if acc == nil {
+			continue
+		}
+		out.ToolCalls = append(out.ToolCalls, types.ToolCall{
+			ID:    acc.id,
+			Name:  acc.name,
+			Input: json.RawMessage(acc.arguments.String()),
 		})
 	}
 	return out, nil

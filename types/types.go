@@ -29,12 +29,17 @@ type Message struct {
 	IsError    bool       // tool only
 }
 
+type StreamEvent struct {
+	TextDelta string
+}
+
 type CompleteRequest struct {
 	SystemPrompt string
 	Messages     []Message
 	Tools        []ToolDefinition
 	Model        string
 	MaxTokens    int
+	OnStream     func(StreamEvent) // nil = non-streaming
 }
 
 type CompleteResponse struct {

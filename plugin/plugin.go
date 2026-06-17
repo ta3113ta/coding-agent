@@ -7,6 +7,7 @@ import (
 	"coding-agent/llm"
 	"coding-agent/skills"
 	"coding-agent/tools"
+	"coding-agent/types"
 )
 
 type App struct {
@@ -38,7 +39,7 @@ type PromptContributor interface {
 
 // AgentHandle is the minimal agent surface runners need (avoids import cycle with agent package).
 type AgentHandle interface {
-	Run(ctx context.Context, userInput string) (string, error)
+	Run(ctx context.Context, userInput string, onStream func(types.StreamEvent)) (string, error)
 }
 
 type Runner interface {

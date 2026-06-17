@@ -1,10 +1,10 @@
-# Coding Agent — Phase 1
+# Coding Agent
 
-Minimal coding agent ที่รันได้จริง แกนกลางคือ **agent loop**: วน LLM + tools จน LLM หยุดเรียก tool
+Minimal coding agent for learning purpose
 
-ออกแบบแบบ **minimal core + compile-time plugins** — ดู [AGENTS.md](AGENTS.md) สำหรับวิธีเพิ่ม feature ใหม่
+Built with **minimal core + compile-time plugins** — see [AGENTS.md](AGENTS.md) for how to add new features.
 
-## โครงสร้าง
+## Structure
 
 ```
 coding-agent/
@@ -33,13 +33,13 @@ coding-agent/
     ├── providers/                   # anthropic, openrouter
     ├── skills/builtin/              # bundled SKILL.md files
     ├── prompt/coding/               # system prompt
-    └── runner/repl/                 # stdin REPL
+    └── runner/repl/                 # stdin REPL (streams assistant text)
 ```
 
-## วิธีรัน
+## How to run
 
 ```bash
-cp .env-example .env   # แล้วใส่ API key
+cp .env-example .env   # then add your API key
 go mod tidy
 go run .
 ```
@@ -51,7 +51,7 @@ export ANTHROPIC_API_KEY=sk-ant-...
 go run .
 ```
 
-### OpenRouter ผ่าน env
+### OpenRouter via env
 
 ```bash
 export LLM_PROVIDER=openrouter
@@ -59,50 +59,56 @@ export OPENROUTER_API_KEY=sk-or-...
 go run .
 ```
 
-### OpenRouter ผ่าน CLI flags
+### OpenRouter via CLI flags
 
 ```bash
 go run . --provider openrouter --model openai/gpt-4o
 ```
 
-### ตัวแปร config
+### Configuration variables
 
-| ตัวแปร / flag | ค่าเริ่มต้น | คำอธิบาย |
+| Variable / flag | Default | Description |
 |---|---|---|
-| `LLM_PROVIDER` / `--provider` | `anthropic` | `anthropic` หรือ `openrouter` |
-| `ANTHROPIC_API_KEY` | — | API key สำหรับ Anthropic |
-| `ANTHROPIC_MODEL` / `--model` | `claude-sonnet-4-5` | model สำหรับ Anthropic |
-| `OPENROUTER_API_KEY` | — | API key สำหรับ OpenRouter |
-| `OPENROUTER_MODEL` / `--model` | `anthropic/claude-sonnet-4` | model สำหรับ OpenRouter |
-| `SKILLS_ENABLE_PERSONAL` | `true` | เปิด/ปิด discovery จาก `~/.cursor/skills/` (`false` เพื่อปิด) |
+| `LLM_PROVIDER` / `--provider` | `anthropic` | `anthropic` or `openrouter` |
+| `ANTHROPIC_API_KEY` | — | API key for Anthropic |
+| `ANTHROPIC_MODEL` / `--model` | `claude-sonnet-4-5` | Anthropic model |
+| `OPENROUTER_API_KEY` | — | API key for OpenRouter |
+| `OPENROUTER_MODEL` / `--model` | `anthropic/claude-sonnet-4` | OpenRouter model |
+| `SKILLS_ENABLE_PERSONAL` | `true` | Enable/disable discovery from `~/.cursor/skills/` (`false` to disable) |
 
-CLI flags จะ override ค่าจาก env
+CLI flags override env values.
 
-แล้วลองสั่ง เช่น:
-- `สร้างไฟล์ fizzbuzz.go ที่พิมพ์ 1-20 แล้ว build ให้ดูว่าผ่าน`
-- `อ่าน main.go แล้วอธิบายว่าทำงานยังไง`
+Then try prompts such as:
+- `create a fizzbuzz.go file that prints 1-20, then build it to verify it works`
+- `read main.go and explain how it works`
 
-## แกนของ loop (agent/agent.go)
+The REPL streams assistant text token-by-token instead of waiting for the full response — see [ADR-0003](docs/adr/0003-streaming-llm-responses.md).
+
+## Agent loop core (agent/agent.go)
 
 ```
 loop:
-  1. เรียก provider.Complete ด้วย messages + tool definitions
-  2. เก็บ assistant response (text + tool calls) เข้า history
-  3. ถ้ามี tool call → รัน tool → เก็บผลเป็น role=tool message
-  4. ไม่มี tool call → จบ คืน text
-  5. ส่ง tool results กลับเข้า history → วนต่อ
+  1. Call provider.Complete with messages + tool definitions
+  2. Append assistant response (text + tool calls) to history
+  3. If tool calls exist → run tools → append results as role=tool messages
+  4. No tool calls → done, return text
+  5. Send tool results back into history → loop again
 ```
 
 ## When adding new feature
 
-1. เขียน ADR ใน `docs/adr/` ถ้า feature กระทบ architecture (ดู [AGENTS.md](AGENTS.md#architecture-decision-records))
-2. เพิ่ม plugin ใน `plugins/` แล้วลงทะเบียนใน `plugins/builtin/builtin.go`
+1. Write an ADR in `docs/adr/` if the feature affects architecture (see [AGENTS.md](AGENTS.md#architecture-decision-records))
+2. Add a plugin under `plugins/` and register it in `plugins/builtin/builtin.go`
+
+## Done
+
+- `str_replace` tool plugin — [ADR-0001](docs/adr/0001-str-replace-for-file-editing.md)
+- Load skill (two-phase discovery) — [ADR-0002](docs/adr/0002-load-skill-two-phase-discovery.md)
+- Streaming runner plugin — [ADR-0003](docs/adr/0003-streaming-llm-responses.md)
 
 ## Road map
 
-- ~~`str_replace` tool plugin~~ — [ADR-0001](docs/adr/0001-str-replace-for-file-editing.md)
-- ~~Load skill (two-phase discovery)~~ — [ADR-0002](docs/adr/0002-load-skill-two-phase-discovery.md)
-- **Streaming runner plugin**
+
 - **Prompt caching**
 - **Session management**
 - **Permission hook plugin**
@@ -120,5 +126,5 @@ loop:
 - **Hashline edit** File state / staleness check 
 - **Cost / token tracking**
 - **MCP client**
+- **File reference (@file)**
 - **full customize**
-

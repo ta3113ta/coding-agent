@@ -29,7 +29,7 @@ func (p *provider) Complete(ctx context.Context, req types.CompleteRequest) (*ty
 		maxTokens = 8096
 	}
 
-	resp, err := p.client.Messages.New(ctx, anthropic.MessageNewParams{
+	params := anthropic.MessageNewParams{
 		Model:     anthropic.Model(req.Model),
 		MaxTokens: int64(maxTokens),
 		System: []anthropic.TextBlockParam{
@@ -37,13 +37,40 @@ func (p *provider) Complete(ctx context.Context, req types.CompleteRequest) (*ty
 		},
 		Messages: toAnthropicMessages(req.Messages),
 		Tools:    toAnthropicTools(req.Tools),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("anthropic: %w", err)
 	}
 
+	if req.OnStream == nil {
+		resp, err := p.client.Messages.New(ctx, params)
+		if err != nil {
+			return nil, fmt.Errorf("anthropic: %w", err)
+		}
+		return anthropicMessageToResponse(resp), nil
+	}
+
+	stream := p.client.Messages.NewStreaming(ctx, params)
+	defer stream.Close()
+
+	var msg anthropic.Message
+	for stream.Next() {
+		event := stream.Current()
+		if err := msg.Accumulate(event); err != nil {
+			return nil, fmt.Errorf("anthropic accumulate: %w", err)
+		}
+		if delta, ok := event.AsAny().(anthropic.ContentBlockDeltaEvent); ok {
+			if td, ok := delta.Delta.AsAny().(anthropic.TextDelta); ok && td.Text != "" {
+				req.OnStream(types.StreamEvent{TextDelta: td.Text})
+			}
+		}
+	}
+	if err := stream.Err(); err != nil {
+		return nil, fmt.Errorf("anthropic: %w", err)
+	}
+	return anthropicMessageToResponse(&msg), nil
+}
+
+func anthropicMessageToResponse(msg *anthropic.Message) *types.CompleteResponse {
 	out := &types.CompleteResponse{}
-	for _, block := range resp.Content {
+	for _, block := range msg.Content {
 		switch b := block.AsAny().(type) {
 		case anthropic.TextBlock:
 			out.Text += b.Text
@@ -55,7 +82,7 @@ func (p *provider) Complete(ctx context.Context, req types.CompleteRequest) (*ty
 			})
 		}
 	}
-	return out, nil
+	return out
 }
 
 func toAnthropicTools(tools []types.ToolDefinition) []anthropic.ToolUnionParam {

@@ -30,7 +30,7 @@ func New(provider llm.Provider, registry *tools.Registry, model, systemPrompt st
 
 // Run รับ input จากผู้ใช้ แล้ววน loop จน LLM หยุดเรียก tool
 // คืน text สุดท้ายที่ LLM ตอบ
-func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
+func (a *Agent) Run(ctx context.Context, userInput string, onStream func(types.StreamEvent)) (string, error) {
 	a.messages = append(a.messages, types.Message{
 		Role:    "user",
 		Content: userInput,
@@ -43,6 +43,7 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 			Tools:        a.registry.Definitions(),
 			Model:        a.model,
 			MaxTokens:    8096,
+			OnStream:     onStream,
 		})
 		if err != nil {
 			return "", fmt.Errorf("llm call: %w", err)

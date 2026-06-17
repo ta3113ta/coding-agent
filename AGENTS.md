@@ -89,6 +89,10 @@ Agent discover `SKILL.md` ตอน bootstrap จาก project (`.cursor/skills
 
 ดู rationale และ alternatives ใน [ADR-0002](docs/adr/0002-load-skill-two-phase-discovery.md)
 
+## Streaming
+
+REPL runner stream assistant text tokens ผ่าน optional `OnStream` callback บน `CompleteRequest` — ดู [ADR-0003](docs/adr/0003-streaming-llm-responses.md)
+
 ## Architecture Decision Records
 
 Feature ใหม่ที่กระทบ architecture (tool contract, agent loop, bootstrap flow, discovery model ฯลฯ) ต้องมี ADR ใน `docs/adr/` ก่อน implement

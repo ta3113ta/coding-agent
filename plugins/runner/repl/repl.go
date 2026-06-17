@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"coding-agent/plugin"
+	"coding-agent/types"
 )
 
 type Runner struct{}
@@ -28,12 +29,15 @@ func (Runner) Run(ctx context.Context, ag plugin.AgentHandle) error {
 			break
 		}
 
-		answer, err := ag.Run(ctx, line)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		fmt.Print("\n🤖 ")
+		_, runErr := ag.Run(ctx, line, func(ev types.StreamEvent) {
+			fmt.Print(ev.TextDelta)
+		})
+		if runErr != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", runErr)
 			continue
 		}
-		fmt.Printf("\n🤖 %s\n", answer)
+		fmt.Println()
 	}
 	return nil
 }
