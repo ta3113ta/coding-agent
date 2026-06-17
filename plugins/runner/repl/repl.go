@@ -15,7 +15,7 @@ type Runner struct{}
 func (Runner) Run(ctx context.Context, ag plugin.AgentHandle) error {
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		fmt.Print("\n👤 you> ")
+		fmt.Print("\n👤 hey> ")
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			break
