@@ -75,6 +75,8 @@ go run . --provider openrouter --model openai/gpt-4o
 | `OPENROUTER_API_KEY` | — | API key for OpenRouter |
 | `OPENROUTER_MODEL` / `--model` | `anthropic/claude-sonnet-4` | OpenRouter model |
 | `SKILLS_ENABLE_PERSONAL` | `true` | Enable/disable discovery from `~/.cursor/skills/` (`false` to disable) |
+| `PROMPT_CACHE_ENABLED` | `true` | Enable automatic prompt caching on LLM requests (`false` to disable) |
+| `PROMPT_CACHE_TTL` | `5m` | Cache TTL: `5m` or `1h` (Anthropic/OpenRouter ephemeral caching) |
 
 CLI flags override env values.
 
@@ -83,6 +85,8 @@ Then try prompts such as:
 - `read main.go and explain how it works`
 
 The REPL streams assistant text token-by-token instead of waiting for the full response — see [ADR-0003](docs/adr/0003-streaming-llm-responses.md).
+
+Prompt caching reuses stable prefixes (system prompt, tools, growing history) across tool-loop iterations — see [ADR-0004](docs/adr/0004-prompt-caching.md).
 
 ## Agent loop core (agent/agent.go)
 
@@ -105,11 +109,11 @@ loop:
 - `str_replace` tool plugin — [ADR-0001](docs/adr/0001-str-replace-for-file-editing.md)
 - Load skill (two-phase discovery) — [ADR-0002](docs/adr/0002-load-skill-two-phase-discovery.md)
 - Streaming runner plugin — [ADR-0003](docs/adr/0003-streaming-llm-responses.md)
+- Prompt caching — [ADR-0004](docs/adr/0004-prompt-caching.md)
 
 ## Road map
 
 
-- **Prompt caching**
 - **Session management**
 - **Permission hook plugin**
 - **Context compaction**
@@ -127,4 +131,7 @@ loop:
 - **Cost / token tracking**
 - **MCP client**
 - **File reference (@file)**
+- **More tools: see ./tools.md**
+- **Custom model and provider**
+- **TUI implementation**
 - **full customize**

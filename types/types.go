@@ -33,6 +33,11 @@ type StreamEvent struct {
 	TextDelta string
 }
 
+type PromptCacheConfig struct {
+	Enabled bool
+	TTL     string // "5m" (default) or "1h"
+}
+
 type CompleteRequest struct {
 	SystemPrompt string
 	Messages     []Message
@@ -40,6 +45,7 @@ type CompleteRequest struct {
 	Model        string
 	MaxTokens    int
 	OnStream     func(StreamEvent) // nil = non-streaming
+	PromptCache  PromptCacheConfig
 }
 
 type CompleteResponse struct {

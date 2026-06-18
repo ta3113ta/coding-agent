@@ -15,15 +15,17 @@ type Agent struct {
 	messages     []types.Message
 	model        string
 	systemPrompt string
+	promptCache  types.PromptCacheConfig
 	verbose      bool
 }
 
-func New(provider llm.Provider, registry *tools.Registry, model, systemPrompt string, verbose bool) *Agent {
+func New(provider llm.Provider, registry *tools.Registry, model, systemPrompt string, promptCache types.PromptCacheConfig, verbose bool) *Agent {
 	return &Agent{
 		provider:     provider,
 		registry:     registry,
 		model:        model,
 		systemPrompt: systemPrompt,
+		promptCache:  promptCache,
 		verbose:      verbose,
 	}
 }
@@ -44,6 +46,7 @@ func (a *Agent) Run(ctx context.Context, userInput string, onStream func(types.S
 			Model:        a.model,
 			MaxTokens:    8096,
 			OnStream:     onStream,
+			PromptCache:  a.promptCache,
 		})
 		if err != nil {
 			return "", fmt.Errorf("llm call: %w", err)

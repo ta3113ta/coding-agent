@@ -40,6 +40,7 @@ func (p *provider) Complete(ctx context.Context, req types.CompleteRequest) (*ty
 		Messages:  messages,
 		Tools:     toOpenRouterTools(req.Tools),
 	}
+	applyPromptCache(&chatReq, req.PromptCache)
 
 	if req.OnStream == nil {
 		chatReq.Stream = openrouter.Pointer(false)
@@ -48,6 +49,19 @@ func (p *provider) Complete(ctx context.Context, req types.CompleteRequest) (*ty
 
 	chatReq.Stream = openrouter.Pointer(true)
 	return p.completeStreaming(ctx, req, chatReq)
+}
+
+func applyPromptCache(chatReq *components.ChatRequest, cfg types.PromptCacheConfig) {
+	if !cfg.Enabled {
+		return
+	}
+	directive := &components.AnthropicCacheControlDirective{
+		Type: components.AnthropicCacheControlDirectiveTypeEphemeral,
+	}
+	if cfg.TTL == "1h" {
+		directive.TTL = components.AnthropicCacheControlTTLOneh.ToPointer()
+	}
+	chatReq.CacheControl = directive
 }
 
 func buildOpenRouterMessages(req types.CompleteRequest) []components.ChatMessages {

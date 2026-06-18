@@ -26,7 +26,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	ag := agent.New(app.Provider, app.Tools, cfg.Model(), app.Prompt, true /* verbose */)
+	ag := agent.New(app.Provider, app.Tools, cfg.Model(), app.Prompt, cfg.PromptCache(), true /* verbose */)
 
 	fmt.Printf("Coding Agent [%s / %s] (พิมพ์ 'exit' เพื่อออก)\n", cfg.Provider, cfg.Model())
 	fmt.Println(strings.Repeat("-", 50))

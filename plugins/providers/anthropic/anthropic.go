@@ -29,15 +29,7 @@ func (p *provider) Complete(ctx context.Context, req types.CompleteRequest) (*ty
 		maxTokens = 8096
 	}
 
-	params := anthropic.MessageNewParams{
-		Model:     anthropic.Model(req.Model),
-		MaxTokens: int64(maxTokens),
-		System: []anthropic.TextBlockParam{
-			{Text: req.SystemPrompt},
-		},
-		Messages: toAnthropicMessages(req.Messages),
-		Tools:    toAnthropicTools(req.Tools),
-	}
+	params := buildMessageParams(req, maxTokens)
 
 	if req.OnStream == nil {
 		resp, err := p.client.Messages.New(ctx, params)
@@ -66,6 +58,30 @@ func (p *provider) Complete(ctx context.Context, req types.CompleteRequest) (*ty
 		return nil, fmt.Errorf("anthropic: %w", err)
 	}
 	return anthropicMessageToResponse(&msg), nil
+}
+
+func buildMessageParams(req types.CompleteRequest, maxTokens int) anthropic.MessageNewParams {
+	params := anthropic.MessageNewParams{
+		Model:     anthropic.Model(req.Model),
+		MaxTokens: int64(maxTokens),
+		System: []anthropic.TextBlockParam{
+			{Text: req.SystemPrompt},
+		},
+		Messages: toAnthropicMessages(req.Messages),
+		Tools:    toAnthropicTools(req.Tools),
+	}
+	applyPromptCache(&params, req.PromptCache)
+	return params
+}
+
+func applyPromptCache(params *anthropic.MessageNewParams, cfg types.PromptCacheConfig) {
+	if !cfg.Enabled {
+		return
+	}
+	params.CacheControl = anthropic.NewCacheControlEphemeralParam()
+	if cfg.TTL == "1h" {
+		params.CacheControl.TTL = anthropic.CacheControlEphemeralTTLTTL1h
+	}
 }
 
 func anthropicMessageToResponse(msg *anthropic.Message) *types.CompleteResponse {

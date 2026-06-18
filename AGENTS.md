@@ -93,6 +93,10 @@ Agent discover `SKILL.md` ตอน bootstrap จาก project (`.cursor/skills
 
 REPL runner stream assistant text tokens ผ่าน optional `OnStream` callback บน `CompleteRequest` — ดู [ADR-0003](docs/adr/0003-streaming-llm-responses.md)
 
+## Prompt caching
+
+Provider ใส่ top-level automatic `cache_control` เมื่อ `CompleteRequest.PromptCache.Enabled` — ดู [ADR-0004](docs/adr/0004-prompt-caching.md)
+
 ## Architecture Decision Records
 
 Feature ใหม่ที่กระทบ architecture (tool contract, agent loop, bootstrap flow, discovery model ฯลฯ) ต้องมี ADR ใน `docs/adr/` ก่อน implement
@@ -155,7 +159,7 @@ main.go
       3. Providers registered in llm registry
       4. Prompts concatenated
       5. llm.NewProvider(cfg) resolves active provider
-  → agent.New(provider, tools, model, prompt, verbose)
+  → agent.New(provider, tools, model, prompt, cfg.PromptCache(), verbose)
   → app.Runner.Run(ctx, agent)
 ```
 

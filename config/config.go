@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"coding-agent/types"
 )
 
 type ProviderName string
@@ -14,6 +16,9 @@ const (
 
 	defaultAnthropicModel  = "claude-sonnet-4-5"
 	defaultOpenRouterModel = "anthropic/claude-sonnet-4"
+
+	PromptCacheTTL5m = "5m"
+	PromptCacheTTL1h = "1h"
 )
 
 type Config struct {
@@ -23,6 +28,8 @@ type Config struct {
 	OpenRouterAPIKey     string
 	OpenRouterModel      string
 	SkillsEnablePersonal bool
+	PromptCacheEnabled   bool
+	PromptCacheTTL       string
 }
 
 func LoadFromEnv() Config {
@@ -48,6 +55,8 @@ func LoadFromEnv() Config {
 		OpenRouterAPIKey:     strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY")),
 		OpenRouterModel:      openRouterModel,
 		SkillsEnablePersonal: parseBoolEnv("SKILLS_ENABLE_PERSONAL", true),
+		PromptCacheEnabled:   parseBoolEnv("PROMPT_CACHE_ENABLED", true),
+		PromptCacheTTL:       parsePromptCacheTTL(os.Getenv("PROMPT_CACHE_TTL")),
 	}
 }
 
@@ -63,6 +72,17 @@ func parseBoolEnv(key string, defaultVal bool) bool {
 		return false
 	default:
 		return defaultVal
+	}
+}
+
+func parsePromptCacheTTL(raw string) string {
+	switch strings.TrimSpace(strings.ToLower(raw)) {
+	case "", PromptCacheTTL5m:
+		return PromptCacheTTL5m
+	case PromptCacheTTL1h:
+		return PromptCacheTTL1h
+	default:
+		return PromptCacheTTL5m
 	}
 }
 
@@ -104,5 +124,15 @@ func (c Config) Validate() error {
 	default:
 		return fmt.Errorf("unsupported provider: %s (use anthropic or openrouter)", c.Provider)
 	}
+	if c.PromptCacheTTL != PromptCacheTTL5m && c.PromptCacheTTL != PromptCacheTTL1h {
+		return fmt.Errorf("PROMPT_CACHE_TTL must be %q or %q", PromptCacheTTL5m, PromptCacheTTL1h)
+	}
 	return nil
+}
+
+func (c Config) PromptCache() types.PromptCacheConfig {
+	return types.PromptCacheConfig{
+		Enabled: c.PromptCacheEnabled,
+		TTL:     c.PromptCacheTTL,
+	}
 }

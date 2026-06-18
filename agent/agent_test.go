@@ -27,7 +27,7 @@ func TestRun_StreamCallback(t *testing.T) {
 		deltas: []string{"hel", "lo"},
 		text:   "hello",
 	}
-	ag := New(provider, tools.NewRegistry(), "test-model", "system", false)
+	ag := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false)
 
 	var got []string
 	answer, err := ag.Run(context.Background(), "hi", func(ev types.StreamEvent) {
@@ -49,7 +49,7 @@ func TestRun_NilStreamCallback(t *testing.T) {
 		deltas: []string{"skip"},
 		text:   "done",
 	}
-	ag := New(provider, tools.NewRegistry(), "test-model", "system", false)
+	ag := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false)
 
 	answer, err := ag.Run(context.Background(), "hi", nil)
 	if err != nil {
