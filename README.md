@@ -33,6 +33,7 @@ coding-agent/
     ├── providers/                   # anthropic, openrouter
     ├── skills/builtin/              # bundled SKILL.md files
     ├── prompt/coding/               # system prompt
+    ├── session/filestore/           # JSON session persistence
     └── runner/repl/                 # stdin REPL (streams assistant text)
 ```
 
@@ -77,6 +78,14 @@ go run . --provider openrouter --model openai/gpt-4o
 | `SKILLS_ENABLE_PERSONAL` | `true` | Enable/disable discovery from `~/.cursor/skills/` (`false` to disable) |
 | `PROMPT_CACHE_ENABLED` | `true` | Enable automatic prompt caching on LLM requests (`false` to disable) |
 | `PROMPT_CACHE_TTL` | `5m` | Cache TTL: `5m` or `1h` (Anthropic/OpenRouter ephemeral caching) |
+| `SESSION_SCOPE` / `--session-scope` | `project` | Session storage: `project` (`.coding-agent/sessions/` in cwd) or `global` (`~/.coding-agent/sessions/`) |
+| `SESSION_DIR` / `--session-dir` | — | Override session storage directory |
+| `--resume` | — | Resume session ID on startup |
+| `--new-session` | — | Force new session (overrides `--resume`) |
+| `-c` | — | Continue most recent session |
+| `-r` | — | Browse and select a past session interactively |
+| `--no-session` | — | Ephemeral mode; do not save sessions to disk |
+| `--name` | — | Set session display name at startup |
 
 CLI flags override env values.
 
@@ -87,6 +96,8 @@ Then try prompts such as:
 The REPL streams assistant text token-by-token instead of waiting for the full response — see [ADR-0003](docs/adr/0003-streaming-llm-responses.md).
 
 Prompt caching reuses stable prefixes (system prompt, tools, growing history) across tool-loop iterations — see [ADR-0004](docs/adr/0004-prompt-caching.md).
+
+Sessions auto-save after each turn. Resume with `-c`, `-r`, `--resume <id>`, or REPL commands `/new`, `/sessions`, `/resume <id>`, `/session`, `/name <name>`. Use `--no-session` for ephemeral mode — see [ADR-0005](docs/adr/0005-session-management.md).
 
 ## Agent loop core (agent/agent.go)
 
@@ -110,11 +121,11 @@ loop:
 - Load skill (two-phase discovery) — [ADR-0002](docs/adr/0002-load-skill-two-phase-discovery.md)
 - Streaming runner plugin — [ADR-0003](docs/adr/0003-streaming-llm-responses.md)
 - Prompt caching — [ADR-0004](docs/adr/0004-prompt-caching.md)
+- Session management — [ADR-0005](docs/adr/0005-session-management.md)
 
 ## Road map
 
 
-- **Session management**
 - **Permission hook plugin**
 - **Context compaction**
 - **Sub-agents / task spawning**
@@ -134,4 +145,12 @@ loop:
 - **More tools: see ./tools.md**
 - **Custom model and provider**
 - **TUI implementation**
+- **tool search** [tool search](https://code.visualstudio.com/blogs/2026/06/17/improving-token-efficiency-in-github-copilot#_tool-search)
+- **Extension system and management**
+- **Routing (auto model selection)**
+- **Handoffs (share context between agents)**
+- **Observability and logging**
 - **full customize**
+
+## Internal
+- **prompt optimizer** eg. DSpy

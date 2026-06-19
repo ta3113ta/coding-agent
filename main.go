@@ -10,15 +10,50 @@ import (
 	"coding-agent/agent"
 	"coding-agent/plugin"
 	"coding-agent/plugins/builtin"
+	"coding-agent/plugins/session/memory"
+	"coding-agent/plugins/session/picker"
+	"coding-agent/session"
 )
+
+type startupFlags struct {
+	continueLatest bool
+	pickSession    bool
+	noSession      bool
+	newSession     bool
+	resume         string
+	name           string
+}
 
 func main() {
 	providerFlag := flag.String("provider", "", "LLM provider: anthropic|openrouter")
 	modelFlag := flag.String("model", "", "Model override")
+	sessionScopeFlag := flag.String("session-scope", "", "Session storage scope: project|global")
+	sessionDirFlag := flag.String("session-dir", "", "Override session storage directory")
+	resumeFlag := flag.String("resume", "", "Resume session ID on startup")
+	newSessionFlag := flag.Bool("new-session", false, "Force new session (overrides --resume)")
+	continueFlag := flag.Bool("c", false, "Continue most recent session")
+	pickFlag := flag.Bool("r", false, "Browse and select a past session")
+	noSessionFlag := flag.Bool("no-session", false, "Ephemeral mode; do not save sessions")
+	nameFlag := flag.String("name", "", "Set session display name at startup")
 	flag.Parse()
+
+	flags := startupFlags{
+		continueLatest: *continueFlag,
+		pickSession:    *pickFlag,
+		noSession:      *noSessionFlag,
+		newSession:     *newSessionFlag,
+		resume:         strings.TrimSpace(*resumeFlag),
+		name:           strings.TrimSpace(*nameFlag),
+	}
+
+	if err := validateStartupFlags(flags); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 
 	cfg := plugin.LoadConfigFromEnv()
 	cfg.ApplyFlags(*providerFlag, *modelFlag)
+	cfg.ApplySessionFlags(*sessionScopeFlag, *sessionDirFlag)
 
 	app, err := plugin.Bootstrap(cfg, builtin.Default...)
 	if err != nil {
@@ -26,13 +61,88 @@ func main() {
 		os.Exit(1)
 	}
 
-	ag := agent.New(app.Provider, app.Tools, cfg.Model(), app.Prompt, cfg.PromptCache(), true /* verbose */)
+	store := app.SessionStore
+	if flags.noSession {
+		store = memory.New()
+	} else if store == nil {
+		fmt.Fprintln(os.Stderr, "session store not configured")
+		os.Exit(1)
+	}
 
-	fmt.Printf("Coding Agent [%s / %s] (พิมพ์ 'exit' เพื่อออก)\n", cfg.Provider, cfg.Model())
-	fmt.Println(strings.Repeat("-", 50))
-
-	if err := app.Runner.Run(context.Background(), ag); err != nil {
+	ag, err := agent.New(app.Provider, app.Tools, cfg.Model(), app.Prompt, cfg.PromptCache(), true /* verbose */, store, string(cfg.Provider))
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
+	}
+
+	ctx := context.Background()
+	if err := resolveStartupSession(ctx, ag, store, flags); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
+	if flags.name != "" {
+		if err := ag.SetSessionName(ctx, flags.name); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	}
+
+	fmt.Printf("Coding Agent [%s / %s] (พิมพ์ 'exit' เพื่อออก)\n", cfg.Provider, cfg.Model())
+	fmt.Printf("Session: %s\n", ag.SessionLabel())
+	fmt.Println(strings.Repeat("-", 50))
+
+	if err := app.Runner.Run(ctx, ag); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func validateStartupFlags(f startupFlags) error {
+	if f.noSession {
+		if f.continueLatest || f.pickSession || f.newSession || f.resume != "" {
+			return fmt.Errorf("--no-session cannot be combined with -c, -r, --new-session, or --resume")
+		}
+		return nil
+	}
+	if f.newSession && (f.continueLatest || f.pickSession || f.resume != "") {
+		return fmt.Errorf("--new-session cannot be combined with -c, -r, or --resume")
+	}
+	if f.resume != "" && (f.continueLatest || f.pickSession) {
+		return fmt.Errorf("--resume cannot be combined with -c or -r")
+	}
+	if f.continueLatest && f.pickSession {
+		return fmt.Errorf("-c and -r are mutually exclusive")
+	}
+	return nil
+}
+
+func resolveStartupSession(ctx context.Context, ag *agent.Agent, store session.Store, f startupFlags) error {
+	switch {
+	case f.newSession || (!f.continueLatest && !f.pickSession && f.resume == ""):
+		return ag.InitNewSession(ctx)
+	case f.resume != "":
+		return ag.ResumeSession(ctx, f.resume)
+	case f.pickSession:
+		id, err := picker.Select(ctx, store, os.Stdin, os.Stdout)
+		if err != nil {
+			return err
+		}
+		if id == "" {
+			return ag.InitNewSession(ctx)
+		}
+		return ag.ResumeSession(ctx, id)
+	case f.continueLatest:
+		metas, err := store.List(ctx)
+		if err != nil {
+			return err
+		}
+		if latest := session.Latest(metas); latest != nil {
+			return ag.ResumeSession(ctx, latest.ID)
+		}
+		fmt.Println("no previous session; starting fresh")
+		return ag.InitNewSession(ctx)
+	default:
+		return ag.InitNewSession(ctx)
 	}
 }

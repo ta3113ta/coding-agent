@@ -6,6 +6,8 @@ import (
 	"coding-agent/plugins/providers/anthropic"
 	"coding-agent/plugins/providers/openrouter"
 	"coding-agent/plugins/runner/repl"
+	"coding-agent/plugins/session/filestore"
+	"coding-agent/plugins/session/memory"
 	"coding-agent/plugins/skills"
 	"coding-agent/plugins/tools/listdir"
 	"coding-agent/plugins/tools/readfile"
@@ -17,14 +19,25 @@ import (
 // Default is the single compile-time registry of built-in plugins.
 // Add new plugins here.
 var Default = []plugin.Plugin{
+	// core tools plugins
 	readfile.Plugin{},
 	writefile.Plugin{},
 	strreplace.Plugin{},
 	listdir.Plugin{},
 	runbash.Plugin{},
+
+	// skills plugins
 	&skills.Plugin{},
+
+	// provider plugins
 	anthropic.Plugin{},
 	openrouter.Plugin{},
+
+	// session plugins
+	filestore.Plugin{},
+	memory.Plugin{},
+
+	// other plugins
 	coding.Plugin{},
 	repl.Plugin{},
 }

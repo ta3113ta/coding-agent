@@ -11,6 +11,7 @@ This project uses a **minimal core + compile-time plugins** design. The core def
 | [`llm/provider.go`](../llm/provider.go) | `Provider` interface + provider registry |
 | [`tools/tool.go`](../tools/tool.go) | `Tool` interface + `Registry` dispatch |
 | [`config/`](../config/config.go) | Env/flag configuration |
+| [`session/`](../session/session.go) | Session types + `Store` interface |
 | [`plugin/`](../plugin/) | Plugin interfaces + `Bootstrap()` |
 
 **Rule:** If it talks to an external API, runs shell commands, or defines a persona — it is a plugin, not core.
@@ -97,6 +98,10 @@ REPL runner stream assistant text tokens ผ่าน optional `OnStream` callba
 
 Provider ใส่ top-level automatic `cache_control` เมื่อ `CompleteRequest.PromptCache.Enabled` — ดู [ADR-0004](docs/adr/0004-prompt-caching.md)
 
+## Session management
+
+Persist conversation history เป็น JSON ผ่าน `session.Store` contract + filestore plugin — auto-save หลังแต่ละ turn, display name, ephemeral mode (`--no-session`), startup flags `-c`/`-r`, resume ด้วย CLI หรือ REPL slash commands — ดู [ADR-0005](docs/adr/0005-session-management.md)
+
 ## Architecture Decision Records
 
 Feature ใหม่ที่กระทบ architecture (tool contract, agent loop, bootstrap flow, discovery model ฯลฯ) ต้องมี ADR ใน `docs/adr/` ก่อน implement
@@ -159,7 +164,7 @@ main.go
       3. Providers registered in llm registry
       4. Prompts concatenated
       5. llm.NewProvider(cfg) resolves active provider
-  → agent.New(provider, tools, model, prompt, cfg.PromptCache(), verbose)
+  → agent.New(provider, tools, model, prompt, cfg.PromptCache(), verbose, sessionStore, providerName)
   → app.Runner.Run(ctx, agent)
 ```
 

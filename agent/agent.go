@@ -3,8 +3,10 @@ package agent
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"coding-agent/llm"
+	"coding-agent/session"
 	"coding-agent/tools"
 	"coding-agent/types"
 )
@@ -17,9 +19,16 @@ type Agent struct {
 	systemPrompt string
 	promptCache  types.PromptCacheConfig
 	verbose      bool
+	store        session.Store
+	sessionID    string
+	sessionName  string
+	providerName string
 }
 
-func New(provider llm.Provider, registry *tools.Registry, model, systemPrompt string, promptCache types.PromptCacheConfig, verbose bool) *Agent {
+func New(provider llm.Provider, registry *tools.Registry, model, systemPrompt string, promptCache types.PromptCacheConfig, verbose bool, store session.Store, providerName string) (*Agent, error) {
+	if store == nil {
+		return nil, fmt.Errorf("session store is required")
+	}
 	return &Agent{
 		provider:     provider,
 		registry:     registry,
@@ -27,12 +36,81 @@ func New(provider llm.Provider, registry *tools.Registry, model, systemPrompt st
 		systemPrompt: systemPrompt,
 		promptCache:  promptCache,
 		verbose:      verbose,
+		store:        store,
+		providerName: providerName,
+	}, nil
+}
+
+func (a *Agent) CurrentSessionID() string {
+	return a.sessionID
+}
+
+func (a *Agent) CurrentSessionName() string {
+	return a.sessionName
+}
+
+func (a *Agent) SessionLabel() string {
+	if a.sessionName != "" {
+		return fmt.Sprintf("%s (%s)", a.sessionName, a.sessionID)
 	}
+	return a.sessionID
+}
+
+func (a *Agent) ListSessions(ctx context.Context) ([]session.Meta, error) {
+	return a.store.List(ctx)
+}
+
+func (a *Agent) InitNewSession(ctx context.Context) error {
+	s, err := a.store.Create(ctx, a.providerName, a.model)
+	if err != nil {
+		return err
+	}
+	a.sessionID = s.ID
+	a.sessionName = ""
+	a.messages = nil
+	return nil
+}
+
+func (a *Agent) ResumeSession(ctx context.Context, id string) error {
+	s, err := a.store.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	a.sessionID = s.ID
+	a.sessionName = s.Name
+	a.messages = s.Messages
+	return nil
+}
+
+func (a *Agent) ResetSession(ctx context.Context) error {
+	return a.InitNewSession(ctx)
+}
+
+func (a *Agent) SetSessionName(ctx context.Context, name string) error {
+	if a.sessionID == "" {
+		return fmt.Errorf("no active session")
+	}
+	a.sessionName = strings.TrimSpace(name)
+	return a.persist(ctx)
+}
+
+func (a *Agent) persist(ctx context.Context) error {
+	return a.store.Save(ctx, &session.Session{
+		ID:       a.sessionID,
+		Name:     a.sessionName,
+		Provider: a.providerName,
+		Model:    a.model,
+		Messages: a.messages,
+	})
 }
 
 // Run รับ input จากผู้ใช้ แล้ววน loop จน LLM หยุดเรียก tool
 // คืน text สุดท้ายที่ LLM ตอบ
 func (a *Agent) Run(ctx context.Context, userInput string, onStream func(types.StreamEvent)) (string, error) {
+	if a.sessionID == "" {
+		return "", fmt.Errorf("no active session")
+	}
+
 	a.messages = append(a.messages, types.Message{
 		Role:    "user",
 		Content: userInput,
@@ -59,6 +137,9 @@ func (a *Agent) Run(ctx context.Context, userInput string, onStream func(types.S
 		})
 
 		if len(resp.ToolCalls) == 0 {
+			if err := a.persist(ctx); err != nil {
+				return "", fmt.Errorf("save session: %w", err)
+			}
 			return resp.Text, nil
 		}
 

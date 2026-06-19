@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"coding-agent/types"
@@ -19,6 +20,9 @@ const (
 
 	PromptCacheTTL5m = "5m"
 	PromptCacheTTL1h = "1h"
+
+	SessionScopeProject = "project"
+	SessionScopeGlobal  = "global"
 )
 
 type Config struct {
@@ -30,6 +34,8 @@ type Config struct {
 	SkillsEnablePersonal bool
 	PromptCacheEnabled   bool
 	PromptCacheTTL       string
+	SessionScope         string
+	SessionDir           string
 }
 
 func LoadFromEnv() Config {
@@ -57,6 +63,17 @@ func LoadFromEnv() Config {
 		SkillsEnablePersonal: parseBoolEnv("SKILLS_ENABLE_PERSONAL", true),
 		PromptCacheEnabled:   parseBoolEnv("PROMPT_CACHE_ENABLED", true),
 		PromptCacheTTL:       parsePromptCacheTTL(os.Getenv("PROMPT_CACHE_TTL")),
+		SessionScope:         parseSessionScope(os.Getenv("SESSION_SCOPE")),
+		SessionDir:           strings.TrimSpace(os.Getenv("SESSION_DIR")),
+	}
+}
+
+func parseSessionScope(raw string) string {
+	switch strings.TrimSpace(strings.ToLower(raw)) {
+	case SessionScopeGlobal:
+		return SessionScopeGlobal
+	default:
+		return SessionScopeProject
 	}
 }
 
@@ -83,6 +100,15 @@ func parsePromptCacheTTL(raw string) string {
 		return PromptCacheTTL1h
 	default:
 		return PromptCacheTTL5m
+	}
+}
+
+func (c *Config) ApplySessionFlags(sessionScope, sessionDir string) {
+	if s := strings.TrimSpace(strings.ToLower(sessionScope)); s != "" {
+		c.SessionScope = parseSessionScope(s)
+	}
+	if d := strings.TrimSpace(sessionDir); d != "" {
+		c.SessionDir = d
 	}
 }
 
@@ -127,7 +153,24 @@ func (c Config) Validate() error {
 	if c.PromptCacheTTL != PromptCacheTTL5m && c.PromptCacheTTL != PromptCacheTTL1h {
 		return fmt.Errorf("PROMPT_CACHE_TTL must be %q or %q", PromptCacheTTL5m, PromptCacheTTL1h)
 	}
+	if c.SessionScope != SessionScopeProject && c.SessionScope != SessionScopeGlobal {
+		return fmt.Errorf("SESSION_SCOPE must be %q or %q", SessionScopeProject, SessionScopeGlobal)
+	}
 	return nil
+}
+
+func (c Config) SessionDirPath(cwd string) (string, error) {
+	if c.SessionDir != "" {
+		return c.SessionDir, nil
+	}
+	if c.SessionScope == SessionScopeGlobal {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("home dir: %w", err)
+		}
+		return filepath.Join(home, ".coding-agent", "sessions"), nil
+	}
+	return filepath.Join(cwd, ".coding-agent", "sessions"), nil
 }
 
 func (c Config) PromptCache() types.PromptCacheConfig {
