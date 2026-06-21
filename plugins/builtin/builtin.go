@@ -2,6 +2,8 @@ package builtin
 
 import (
 	"coding-agent/plugin"
+	"coding-agent/plugins/permission/interactive"
+	"coding-agent/plugins/permission/script"
 	"coding-agent/plugins/prompt/coding"
 	"coding-agent/plugins/providers/anthropic"
 	"coding-agent/plugins/providers/openrouter"
@@ -25,6 +27,10 @@ var Default = []plugin.Plugin{
 	strreplace.Plugin{},
 	listdir.Plugin{},
 	runbash.Plugin{},
+
+	// permission plugins (script before interactive)
+	script.Plugin{},
+	interactive.Plugin{},
 
 	// skills plugins
 	&skills.Plugin{},

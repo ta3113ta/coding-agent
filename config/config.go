@@ -36,6 +36,8 @@ type Config struct {
 	PromptCacheTTL       string
 	SessionScope         string
 	SessionDir           string
+	PermissionEnabled    bool
+	PermissionHooksFile  string
 }
 
 func LoadFromEnv() Config {
@@ -65,6 +67,8 @@ func LoadFromEnv() Config {
 		PromptCacheTTL:       parsePromptCacheTTL(os.Getenv("PROMPT_CACHE_TTL")),
 		SessionScope:         parseSessionScope(os.Getenv("SESSION_SCOPE")),
 		SessionDir:           strings.TrimSpace(os.Getenv("SESSION_DIR")),
+		PermissionEnabled:    parseBoolEnv("PERMISSION_ENABLED", true),
+		PermissionHooksFile:  parsePermissionHooksFile(os.Getenv("PERMISSION_HOOKS_FILE")),
 	}
 }
 
@@ -100,6 +104,20 @@ func parsePromptCacheTTL(raw string) string {
 		return PromptCacheTTL1h
 	default:
 		return PromptCacheTTL5m
+	}
+}
+
+func parsePermissionHooksFile(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ".coding-agent/hooks.json"
+	}
+	return raw
+}
+
+func (c *Config) ApplyPermissionFlags(noPermission bool) {
+	if noPermission {
+		c.PermissionEnabled = false
 	}
 }
 

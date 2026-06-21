@@ -5,6 +5,7 @@ import (
 
 	"coding-agent/config"
 	"coding-agent/llm"
+	"coding-agent/permission"
 	"coding-agent/session"
 	"coding-agent/skills"
 	"coding-agent/tools"
@@ -19,6 +20,7 @@ type App struct {
 	Runner       Runner
 	Skills       *skills.Registry
 	SessionStore session.Store
+	Permission   *permission.Chain
 }
 
 type Plugin interface {

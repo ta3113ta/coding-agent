@@ -2,11 +2,14 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"coding-agent/permission"
 	"coding-agent/session"
 	"coding-agent/tools"
 	"coding-agent/types"
@@ -104,9 +107,13 @@ func (f *fakeStreamProvider) Complete(ctx context.Context, req types.CompleteReq
 }
 
 func newTestAgent(t *testing.T, provider *fakeStreamProvider) (*Agent, *memStore) {
+	return newTestAgentWithPermission(t, provider, nil)
+}
+
+func newTestAgentWithPermission(t *testing.T, provider *fakeStreamProvider, perm *permission.Chain) (*Agent, *memStore) {
 	t.Helper()
 	store := newMemStore()
-	ag, err := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic")
+	ag, err := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", perm)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -241,7 +248,7 @@ func TestSetSessionName(t *testing.T) {
 func TestInitNewSession(t *testing.T) {
 	provider := &fakeStreamProvider{text: "ok"}
 	store := newMemStore()
-	ag, err := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic")
+	ag, err := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -254,4 +261,93 @@ func TestInitNewSession(t *testing.T) {
 	if ag.CurrentSessionID() == "" {
 		t.Fatal("expected session id after InitNewSession")
 	}
+}
+
+type fakeToolProvider struct {
+	calls int
+}
+
+func (f *fakeToolProvider) Complete(ctx context.Context, req types.CompleteRequest) (*types.CompleteResponse, error) {
+	f.calls++
+	if f.calls == 1 {
+		return &types.CompleteResponse{
+			Text: "running tool",
+			ToolCalls: []types.ToolCall{{
+				ID:    "tc_1",
+				Name:  "run_bash",
+				Input: json.RawMessage(`{"command":"echo hi"}`),
+			}},
+		}, nil
+	}
+	return &types.CompleteResponse{Text: "done after deny"}, nil
+}
+
+type denyHook struct{}
+
+func (denyHook) BeforeToolUse(ctx context.Context, req permission.ToolUseRequest) (permission.Result, error) {
+	_ = ctx
+	return permission.Result{Decision: permission.Deny, Message: "blocked for test"}, nil
+}
+
+func TestRun_PermissionDenied(t *testing.T) {
+	provider := &fakeToolProvider{}
+	perm := permission.NewChain(denyHook{})
+	reg := tools.NewRegistry()
+	executed := false
+	reg.Register(&stubTool{onExecute: func() { executed = true }})
+
+	store := newMemStore()
+	ag, err := New(provider, reg, "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", perm)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := ag.InitNewSession(context.Background()); err != nil {
+		t.Fatalf("InitNewSession: %v", err)
+	}
+
+	answer, err := ag.Run(context.Background(), "run echo", nil)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if answer != "done after deny" {
+		t.Fatalf("answer = %q, want done after deny", answer)
+	}
+	if executed {
+		t.Fatal("tool should not execute when permission denied")
+	}
+
+	s, err := store.Get(context.Background(), ag.CurrentSessionID())
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	var toolMsg *types.Message
+	for i := range s.Messages {
+		if s.Messages[i].Role == "tool" {
+			toolMsg = &s.Messages[i]
+			break
+		}
+	}
+	if toolMsg == nil {
+		t.Fatal("expected tool message in history")
+	}
+	if !toolMsg.IsError || !strings.Contains(toolMsg.Content, "blocked for test") {
+		t.Fatalf("tool message = %+v, want permission error", toolMsg)
+	}
+}
+
+type stubTool struct {
+	onExecute func()
+}
+
+func (s *stubTool) Name() string { return "run_bash" }
+
+func (s *stubTool) Definition() types.ToolDefinition {
+	return types.ToolDefinition{Name: "run_bash"}
+}
+
+func (s *stubTool) Execute(input json.RawMessage) (string, error) {
+	if s.onExecute != nil {
+		s.onExecute()
+	}
+	return "executed", nil
 }

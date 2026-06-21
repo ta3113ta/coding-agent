@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"coding-agent/llm"
+	"coding-agent/permission"
 	"coding-agent/session"
 	"coding-agent/tools"
 	"coding-agent/types"
@@ -23,9 +24,10 @@ type Agent struct {
 	sessionID    string
 	sessionName  string
 	providerName string
+	permission   *permission.Chain
 }
 
-func New(provider llm.Provider, registry *tools.Registry, model, systemPrompt string, promptCache types.PromptCacheConfig, verbose bool, store session.Store, providerName string) (*Agent, error) {
+func New(provider llm.Provider, registry *tools.Registry, model, systemPrompt string, promptCache types.PromptCacheConfig, verbose bool, store session.Store, providerName string, perm *permission.Chain) (*Agent, error) {
 	if store == nil {
 		return nil, fmt.Errorf("session store is required")
 	}
@@ -38,6 +40,7 @@ func New(provider llm.Provider, registry *tools.Registry, model, systemPrompt st
 		verbose:      verbose,
 		store:        store,
 		providerName: providerName,
+		permission:   perm,
 	}, nil
 }
 
@@ -151,12 +154,48 @@ func (a *Agent) Run(ctx context.Context, userInput string, onStream func(types.S
 			if a.verbose {
 				fmt.Printf("🔧 %s(%s)\n", tc.Name, string(tc.Input))
 			}
-			result, err := a.registry.Dispatch(tc.Name, tc.Input)
+
+			input := tc.Input
+			if a.permission != nil && !a.permission.Empty() {
+				permRes, err := a.permission.Evaluate(ctx, permission.ToolUseRequest{
+					ToolName:   tc.Name,
+					Input:      tc.Input,
+					ToolCallID: tc.ID,
+				})
+				if err != nil {
+					a.messages = append(a.messages, types.Message{
+						Role:       "tool",
+						Content:    fmt.Sprintf("error: permission check failed: %v", err),
+						ToolCallID: tc.ID,
+						IsError:    true,
+					})
+					continue
+				}
+				if permRes.Decision == permission.Deny {
+					msg := permRes.Message
+					if msg == "" {
+						msg = "permission denied"
+					}
+					a.messages = append(a.messages, types.Message{
+						Role:       "tool",
+						Content:    fmt.Sprintf("error: %s", msg),
+						ToolCallID: tc.ID,
+						IsError:    true,
+					})
+					continue
+				}
+				if permRes.UpdatedInput != nil {
+					input = permRes.UpdatedInput
+				}
+			}
+
+			result, err := a.registry.Dispatch(tc.Name, input)
 			isError := false
 			if err != nil {
 				result = fmt.Sprintf("error: %v", err)
 				isError = true
 			}
+
 			a.messages = append(a.messages, types.Message{
 				Role:       "tool",
 				Content:    result,

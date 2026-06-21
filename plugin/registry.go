@@ -6,6 +6,7 @@ import (
 
 	"coding-agent/config"
 	"coding-agent/llm"
+	"coding-agent/permission"
 	"coding-agent/tools"
 )
 
@@ -13,6 +14,10 @@ func LoadConfigFromEnv() config.Config {
 	return config.LoadFromEnv()
 }
 
+// Bootstrap the application
+// - validate config
+// - register plugins
+// - register provider
 func Bootstrap(cfg config.Config, plugins ...Plugin) (*App, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
@@ -58,6 +63,16 @@ func RegisterProvider(app *App, p ProviderPlugin) {
 	llm.RegisterProvider(p.ProviderName(), func(cfg config.Config) (llm.Provider, error) {
 		return p.NewProvider(cfg)
 	})
+}
+
+func RegisterPermissionHook(app *App, h permission.Hook) {
+	if h == nil {
+		return
+	}
+	if app.Permission == nil {
+		app.Permission = permission.NewChain()
+	}
+	app.Permission.Register(h)
 }
 
 func AppendPrompt(app *App, prompt string) {

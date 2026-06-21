@@ -87,6 +87,23 @@ func TestApplySessionFlags(t *testing.T) {
 	}
 }
 
+func TestApplyPermissionFlags(t *testing.T) {
+	cfg := Config{PermissionEnabled: true}
+	cfg.ApplyPermissionFlags(true)
+	if cfg.PermissionEnabled {
+		t.Fatal("expected PermissionEnabled=false after --no-permission")
+	}
+}
+
+func TestParsePermissionHooksFile(t *testing.T) {
+	if got := parsePermissionHooksFile(""); got != ".coding-agent/hooks.json" {
+		t.Fatalf("default = %q", got)
+	}
+	if got := parsePermissionHooksFile("/custom/hooks.json"); got != "/custom/hooks.json" {
+		t.Fatalf("override = %q", got)
+	}
+}
+
 func TestValidateSessionScope(t *testing.T) {
 	cfg := Config{
 		Provider:        ProviderAnthropic,

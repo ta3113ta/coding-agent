@@ -12,6 +12,7 @@ This project uses a **minimal core + compile-time plugins** design. The core def
 | [`tools/tool.go`](../tools/tool.go) | `Tool` interface + `Registry` dispatch |
 | [`config/`](../config/config.go) | Env/flag configuration |
 | [`session/`](../session/session.go) | Session types + `Store` interface |
+| [`permission/`](../permission/permission.go) | Permission hook contract + chain |
 | [`plugin/`](../plugin/) | Plugin interfaces + `Bootstrap()` |
 
 **Rule:** If it talks to an external API, runs shell commands, or defines a persona — it is a plugin, not core.
@@ -102,6 +103,14 @@ Provider ใส่ top-level automatic `cache_control` เมื่อ `Complete
 
 Persist conversation history เป็น JSON ผ่าน `session.Store` contract + filestore plugin — auto-save หลังแต่ละ turn, display name, ephemeral mode (`--no-session`), startup flags `-c`/`-r`, resume ด้วย CLI หรือ REPL slash commands — ดู [ADR-0005](docs/adr/0005-session-management.md)
 
+## Permission hooks
+
+ก่อน `registry.Dispatch` agent เรียก `permission.Chain` — script hooks จาก `.coding-agent/hooks.json` (`preToolUse`) แล้ว interactive REPL prompt สำหรับ risky tools — ดู [ADR-0006](docs/adr/0006-permission-hooks.md)
+
+- Config: `PERMISSION_ENABLED`, `PERMISSION_HOOKS_FILE`, `--no-permission`
+- Core: [`permission/permission.go`](../permission/permission.go)
+- Plugins: [`plugins/permission/script/`](../plugins/permission/script/), [`plugins/permission/interactive/`](../plugins/permission/interactive/)
+
 ## Architecture Decision Records
 
 Feature ใหม่ที่กระทบ architecture (tool contract, agent loop, bootstrap flow, discovery model ฯลฯ) ต้องมี ADR ใน `docs/adr/` ก่อน implement
@@ -164,7 +173,7 @@ main.go
       3. Providers registered in llm registry
       4. Prompts concatenated
       5. llm.NewProvider(cfg) resolves active provider
-  → agent.New(provider, tools, model, prompt, cfg.PromptCache(), verbose, sessionStore, providerName)
+  → agent.New(provider, tools, model, prompt, cfg.PromptCache(), verbose, sessionStore, providerName, app.Permission)
   → app.Runner.Run(ctx, agent)
 ```
 
@@ -172,7 +181,7 @@ main.go
 
 - Runtime `.so` plugins
 - `init()` auto-registration (explicit `builtin.Default` list is easier to debug)
-- Hook plugins (permissions, streaming) — add when needed
+- Additional hook events (`postToolUse`, `beforeShellExecution`, MCP) — see ADR-0006 v2
 
 ## Checklist before adding code
 

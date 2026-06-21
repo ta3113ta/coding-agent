@@ -34,6 +34,7 @@ func main() {
 	continueFlag := flag.Bool("c", false, "Continue most recent session")
 	pickFlag := flag.Bool("r", false, "Browse and select a past session")
 	noSessionFlag := flag.Bool("no-session", false, "Ephemeral mode; do not save sessions")
+	noPermissionFlag := flag.Bool("no-permission", false, "Disable permission hooks before tool execution")
 	nameFlag := flag.String("name", "", "Set session display name at startup")
 	flag.Parse()
 
@@ -54,6 +55,7 @@ func main() {
 	cfg := plugin.LoadConfigFromEnv()
 	cfg.ApplyFlags(*providerFlag, *modelFlag)
 	cfg.ApplySessionFlags(*sessionScopeFlag, *sessionDirFlag)
+	cfg.ApplyPermissionFlags(*noPermissionFlag)
 
 	app, err := plugin.Bootstrap(cfg, builtin.Default...)
 	if err != nil {
@@ -64,12 +66,25 @@ func main() {
 	store := app.SessionStore
 	if flags.noSession {
 		store = memory.New()
-	} else if store == nil {
+	}
+
+	if store == nil {
 		fmt.Fprintln(os.Stderr, "session store not configured")
 		os.Exit(1)
 	}
 
-	ag, err := agent.New(app.Provider, app.Tools, cfg.Model(), app.Prompt, cfg.PromptCache(), true /* verbose */, store, string(cfg.Provider))
+	// FIXME: less parameters to the agent constructor
+	ag, err := agent.New(
+		app.Provider,
+		app.Tools,
+		cfg.Model(),
+		app.Prompt,
+		cfg.PromptCache(),
+		true, /* verbose */
+		store,
+		string(cfg.Provider),
+		app.Permission,
+	)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

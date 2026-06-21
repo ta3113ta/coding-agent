@@ -86,6 +86,9 @@ go run . --provider openrouter --model openai/gpt-4o
 | `-r` | — | Browse and select a past session interactively |
 | `--no-session` | — | Ephemeral mode; do not save sessions to disk |
 | `--name` | — | Set session display name at startup |
+| `PERMISSION_ENABLED` | `true` | Enable permission hooks before tool execution (`false` to disable) |
+| `PERMISSION_HOOKS_FILE` | `.coding-agent/hooks.json` | Script hook config for `preToolUse` rules |
+| `--no-permission` | — | Disable all permission hooks |
 
 CLI flags override env values.
 
@@ -99,13 +102,15 @@ Prompt caching reuses stable prefixes (system prompt, tools, growing history) ac
 
 Sessions auto-save after each turn. Resume with `-c`, `-r`, `--resume <id>`, or REPL commands `/new`, `/sessions`, `/resume <id>`, `/session`, `/name <name>`. Use `--no-session` for ephemeral mode — see [ADR-0005](docs/adr/0005-session-management.md).
 
+Permission hooks run before each tool dispatch — script rules from `.coding-agent/hooks.json` plus interactive REPL approval for risky tools — see [ADR-0006](docs/adr/0006-permission-hooks.md).
+
 ## Agent loop core (agent/agent.go)
 
 ```
 loop:
   1. Call provider.Complete with messages + tool definitions
   2. Append assistant response (text + tool calls) to history
-  3. If tool calls exist → run tools → append results as role=tool messages
+  3. If tool calls exist → permission hooks → run tools → append results as role=tool messages
   4. No tool calls → done, return text
   5. Send tool results back into history → loop again
 ```
@@ -122,11 +127,10 @@ loop:
 - Streaming runner plugin — [ADR-0003](docs/adr/0003-streaming-llm-responses.md)
 - Prompt caching — [ADR-0004](docs/adr/0004-prompt-caching.md)
 - Session management — [ADR-0005](docs/adr/0005-session-management.md)
+- Permission hook plugin — [ADR-0006](docs/adr/0006-permission-hooks.md)
 
 ## Road map
 
-
-- **Permission hook plugin**
 - **Context compaction**
 - **Sub-agents / task spawning**
 - **External search: web fetch + web search**
@@ -139,18 +143,28 @@ loop:
 - **Codebase indexing + vector db**
 - **LSP integration**
 - **Hashline edit** File state / staleness check 
-- **Cost / token tracking**
+- **Cost / token tracking (token usage, latency, etc.)**
 - **MCP client**
 - **File reference (@file)**
 - **More tools: see ./tools.md**
-- **Custom model and provider**
+- **Custom model, provider management**, eg. auth.json, /login, /logout
 - **TUI implementation**
 - **tool search** [tool search](https://code.visualstudio.com/blogs/2026/06/17/improving-token-efficiency-in-github-copilot#_tool-search)
 - **Extension system and management**
 - **Routing (auto model selection)**
 - **Handoffs (share context between agents)**
 - **Observability and logging**
-- **full customize**
+
+## V2 (improvements from v1 adr)
+- **str_replace v2**
+- **load_skill v2**
+- **session management v2**
+- **permission hooks v2**
 
 ## Internal
-- **prompt optimizer** eg. DSpy
+- **SYSTEM prompt optimizer** eg. DSpy
+- **Fix infinite loops** for small models
+- **Fix context window overflow**
+- **Fix provider max_tokens limit**
+
+we will move fixes to github issues and add labels for them.
