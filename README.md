@@ -89,6 +89,11 @@ go run . --provider openrouter --model openai/gpt-4o
 | `PERMISSION_ENABLED` | `true` | Enable permission hooks before tool execution (`false` to disable) |
 | `PERMISSION_HOOKS_FILE` | `.coding-agent/hooks.json` | Script hook config for `preToolUse` rules |
 | `--no-permission` | — | Disable all permission hooks |
+| `COMPACTION_ENABLED` | `true` | Auto-summarize history when context exceeds budget (`false` to disable) |
+| `COMPACTION_RESERVE_TOKENS` | `16384` | Tokens reserved for model output; compact when estimate exceeds `contextWindow - reserve` |
+| `COMPACTION_KEEP_RECENT_TOKENS` | `20000` | Token budget for recent messages to keep after compaction |
+| `COMPACTION_CONTEXT_WINDOW` | `200000` | Context window override (model lookup used when unset) |
+| `--no-compaction` | — | Disable context compaction |
 
 CLI flags override env values.
 
@@ -100,9 +105,11 @@ The REPL streams assistant text token-by-token instead of waiting for the full r
 
 Prompt caching reuses stable prefixes (system prompt, tools, growing history) across tool-loop iterations — see [ADR-0004](docs/adr/0004-prompt-caching.md).
 
-Sessions auto-save after each turn. Resume with `-c`, `-r`, `--resume <id>`, or REPL commands `/new`, `/sessions`, `/resume <id>`, `/session`, `/name <name>`. Use `--no-session` for ephemeral mode — see [ADR-0005](docs/adr/0005-session-management.md).
+Sessions auto-save after each turn. Resume with `-c`, `-r`, `--resume <id>`, or REPL commands `/new`, `/sessions`, `/resume <id>`, `/session`, `/name <name>`, `/compact [instructions]`. Use `--no-session` for ephemeral mode — see [ADR-0005](docs/adr/0005-session-management.md).
 
 Permission hooks run before each tool dispatch — script rules from `.coding-agent/hooks.json` plus interactive REPL approval for risky tools — see [ADR-0006](docs/adr/0006-permission-hooks.md).
+
+Context compaction auto-summarizes older history when the projected context exceeds `contextWindow - reserveTokens`; use `/compact` or `/compact focus on API changes` to force compaction — see [ADR-0007](docs/adr/0007-context-compaction.md).
 
 ## Agent loop core (agent/agent.go)
 
@@ -128,16 +135,18 @@ loop:
 - Prompt caching — [ADR-0004](docs/adr/0004-prompt-caching.md)
 - Session management — [ADR-0005](docs/adr/0005-session-management.md)
 - Permission hook plugin — [ADR-0006](docs/adr/0006-permission-hooks.md)
+- Context compaction — [ADR-0007](docs/adr/0007-context-compaction.md)
 
 ## Road map
 
-- **Context compaction**
 - **Sub-agents / task spawning**
 - **External search: web fetch + web search**
-- **Parallel tool execution**
-- **internal search: grep*
-- **Thinking level / reasoning tokens**
 - **TODO / plan tracking**
+- **Thinking level / reasoning tokens**
+- **internal search: grep*
+- **Parallel tool execution**
+- **More tools: see ./tools.md**
+- **Custom model, provider management**, eg. auth.json, /login, /logout
 - **Error recovery / retry policy**
 - **Diff preview before apply**
 - **Codebase indexing + vector db**
@@ -146,8 +155,6 @@ loop:
 - **Cost / token tracking (token usage, latency, etc.)**
 - **MCP client**
 - **File reference (@file)**
-- **More tools: see ./tools.md**
-- **Custom model, provider management**, eg. auth.json, /login, /logout
 - **TUI implementation**
 - **tool search** [tool search](https://code.visualstudio.com/blogs/2026/06/17/improving-token-efficiency-in-github-copilot#_tool-search)
 - **Extension system and management**

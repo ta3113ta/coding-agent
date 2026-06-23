@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"coding-agent/types"
@@ -23,21 +24,29 @@ const (
 
 	SessionScopeProject = "project"
 	SessionScopeGlobal  = "global"
+
+	defaultCompactionReserveTokens    = 16384
+	defaultCompactionKeepRecentTokens = 20000
+	defaultCompactionContextWindow    = 200000
 )
 
 type Config struct {
-	Provider             ProviderName
-	AnthropicAPIKey      string
-	AnthropicModel       string
-	OpenRouterAPIKey     string
-	OpenRouterModel      string
-	SkillsEnablePersonal bool
-	PromptCacheEnabled   bool
-	PromptCacheTTL       string
-	SessionScope         string
-	SessionDir           string
-	PermissionEnabled    bool
-	PermissionHooksFile  string
+	Provider                   ProviderName
+	AnthropicAPIKey            string
+	AnthropicModel             string
+	OpenRouterAPIKey           string
+	OpenRouterModel            string
+	SkillsEnablePersonal       bool
+	PromptCacheEnabled         bool
+	PromptCacheTTL             string
+	SessionScope               string
+	SessionDir                 string
+	PermissionEnabled          bool
+	PermissionHooksFile        string
+	CompactionEnabled          bool
+	CompactionReserveTokens    int
+	CompactionKeepRecentTokens int
+	CompactionContextWindow    int
 }
 
 func LoadFromEnv() Config {
@@ -57,18 +66,22 @@ func LoadFromEnv() Config {
 	}
 
 	return Config{
-		Provider:             provider,
-		AnthropicAPIKey:      strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")),
-		AnthropicModel:       anthropicModel,
-		OpenRouterAPIKey:     strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY")),
-		OpenRouterModel:      openRouterModel,
-		SkillsEnablePersonal: parseBoolEnv("SKILLS_ENABLE_PERSONAL", true),
-		PromptCacheEnabled:   parseBoolEnv("PROMPT_CACHE_ENABLED", true),
-		PromptCacheTTL:       parsePromptCacheTTL(os.Getenv("PROMPT_CACHE_TTL")),
-		SessionScope:         parseSessionScope(os.Getenv("SESSION_SCOPE")),
-		SessionDir:           strings.TrimSpace(os.Getenv("SESSION_DIR")),
-		PermissionEnabled:    parseBoolEnv("PERMISSION_ENABLED", true),
-		PermissionHooksFile:  parsePermissionHooksFile(os.Getenv("PERMISSION_HOOKS_FILE")),
+		Provider:                   provider,
+		AnthropicAPIKey:            strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")),
+		AnthropicModel:             anthropicModel,
+		OpenRouterAPIKey:           strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY")),
+		OpenRouterModel:            openRouterModel,
+		SkillsEnablePersonal:       parseBoolEnv("SKILLS_ENABLE_PERSONAL", true),
+		PromptCacheEnabled:         parseBoolEnv("PROMPT_CACHE_ENABLED", true),
+		PromptCacheTTL:             parsePromptCacheTTL(os.Getenv("PROMPT_CACHE_TTL")),
+		SessionScope:               parseSessionScope(os.Getenv("SESSION_SCOPE")),
+		SessionDir:                 strings.TrimSpace(os.Getenv("SESSION_DIR")),
+		PermissionEnabled:          parseBoolEnv("PERMISSION_ENABLED", true),
+		PermissionHooksFile:        parsePermissionHooksFile(os.Getenv("PERMISSION_HOOKS_FILE")),
+		CompactionEnabled:          parseBoolEnv("COMPACTION_ENABLED", true),
+		CompactionReserveTokens:    parseIntEnv("COMPACTION_RESERVE_TOKENS", defaultCompactionReserveTokens),
+		CompactionKeepRecentTokens: parseIntEnv("COMPACTION_KEEP_RECENT_TOKENS", defaultCompactionKeepRecentTokens),
+		CompactionContextWindow:    parseIntEnv("COMPACTION_CONTEXT_WINDOW", defaultCompactionContextWindow),
 	}
 }
 
@@ -107,12 +120,30 @@ func parsePromptCacheTTL(raw string) string {
 	}
 }
 
+func parseIntEnv(key string, defaultVal int) int {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return defaultVal
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		return defaultVal
+	}
+	return n
+}
+
 func parsePermissionHooksFile(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return ".coding-agent/hooks.json"
 	}
 	return raw
+}
+
+func (c *Config) ApplyCompactionFlags(noCompaction bool) {
+	if noCompaction {
+		c.CompactionEnabled = false
+	}
 }
 
 func (c *Config) ApplyPermissionFlags(noPermission bool) {
@@ -173,6 +204,15 @@ func (c Config) Validate() error {
 	}
 	if c.SessionScope != SessionScopeProject && c.SessionScope != SessionScopeGlobal {
 		return fmt.Errorf("SESSION_SCOPE must be %q or %q", SessionScopeProject, SessionScopeGlobal)
+	}
+	if c.CompactionReserveTokens <= 0 {
+		return fmt.Errorf("COMPACTION_RESERVE_TOKENS must be positive")
+	}
+	if c.CompactionKeepRecentTokens <= 0 {
+		return fmt.Errorf("COMPACTION_KEEP_RECENT_TOKENS must be positive")
+	}
+	if c.CompactionContextWindow <= 0 {
+		return fmt.Errorf("COMPACTION_CONTEXT_WINDOW must be positive")
 	}
 	return nil
 }

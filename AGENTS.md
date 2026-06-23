@@ -13,6 +13,7 @@ This project uses a **minimal core + compile-time plugins** design. The core def
 | [`config/`](../config/config.go) | Env/flag configuration |
 | [`session/`](../session/session.go) | Session types + `Store` interface |
 | [`permission/`](../permission/permission.go) | Permission hook contract + chain |
+| [`compaction/`](../compaction/compaction.go) | Context compaction contract |
 | [`plugin/`](../plugin/) | Plugin interfaces + `Bootstrap()` |
 
 **Rule:** If it talks to an external API, runs shell commands, or defines a persona — it is a plugin, not core.
@@ -111,6 +112,14 @@ Persist conversation history เป็น JSON ผ่าน `session.Store` cont
 - Core: [`permission/permission.go`](../permission/permission.go)
 - Plugins: [`plugins/permission/script/`](../plugins/permission/script/), [`plugins/permission/interactive/`](../plugins/permission/interactive/)
 
+## Context compaction
+
+ก่อน `provider.Complete` agent เรียก `compaction.Compactor` — auto-summarize เมื่อ projected context เกิน `contextWindow - reserveTokens` หรือ manual `/compact [instructions]` — ดู [ADR-0007](docs/adr/0007-context-compaction.md)
+
+- Config: `COMPACTION_ENABLED`, `COMPACTION_RESERVE_TOKENS`, `COMPACTION_KEEP_RECENT_TOKENS`, `COMPACTION_CONTEXT_WINDOW`, `--no-compaction`
+- Core: [`compaction/`](../compaction/) (serialize, project, split-by-tokens, file ops)
+- Plugin: [`plugins/compaction/summarize/`](../plugins/compaction/summarize/)
+
 ## Architecture Decision Records
 
 Feature ใหม่ที่กระทบ architecture (tool contract, agent loop, bootstrap flow, discovery model ฯลฯ) ต้องมี ADR ใน `docs/adr/` ก่อน implement
@@ -173,7 +182,7 @@ main.go
       3. Providers registered in llm registry
       4. Prompts concatenated
       5. llm.NewProvider(cfg) resolves active provider
-  → agent.New(provider, tools, model, prompt, cfg.PromptCache(), verbose, sessionStore, providerName, app.Permission)
+  → agent.New(provider, tools, model, prompt, cache, verbose, sessionStore, providerName, app.Permission, app.Compactor)
   → app.Runner.Run(ctx, agent)
 ```
 

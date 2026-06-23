@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"coding-agent/plugin"
+	"coding-agent/plugins/compaction/summarize"
 	"coding-agent/plugins/permission/interactive"
 	"coding-agent/plugins/permission/script"
 	"coding-agent/plugins/prompt/coding"
@@ -38,6 +39,9 @@ var Default = []plugin.Plugin{
 	// provider plugins
 	anthropic.Plugin{},
 	openrouter.Plugin{},
+
+	// compaction plugins (after providers)
+	summarize.Plugin{},
 
 	// session plugins
 	filestore.Plugin{},

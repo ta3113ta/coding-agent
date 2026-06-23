@@ -8,14 +8,25 @@ import (
 	"coding-agent/types"
 )
 
+type CompactionRecord struct {
+	ID             string
+	Timestamp      time.Time
+	Summary        string
+	FirstKeptIndex int
+	TokensBefore   int
+	ReadFiles      []string
+	ModifiedFiles  []string
+}
+
 type Session struct {
-	ID        string
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	Provider  string
-	Model     string
-	Name      string
-	Messages  []types.Message
+	ID          string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	Provider    string
+	Model       string
+	Name        string
+	Messages    []types.Message
+	Compactions []CompactionRecord
 }
 
 type Meta struct {

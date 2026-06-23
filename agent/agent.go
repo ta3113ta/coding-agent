@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"coding-agent/compaction"
 	"coding-agent/llm"
 	"coding-agent/permission"
 	"coding-agent/session"
@@ -15,6 +16,8 @@ import (
 type Agent struct {
 	provider     llm.Provider
 	registry     *tools.Registry
+	archive      []types.Message
+	compactions  []session.CompactionRecord
 	messages     []types.Message
 	model        string
 	systemPrompt string
@@ -25,9 +28,10 @@ type Agent struct {
 	sessionName  string
 	providerName string
 	permission   *permission.Chain
+	compactor    compaction.Compactor
 }
 
-func New(provider llm.Provider, registry *tools.Registry, model, systemPrompt string, promptCache types.PromptCacheConfig, verbose bool, store session.Store, providerName string, perm *permission.Chain) (*Agent, error) {
+func New(provider llm.Provider, registry *tools.Registry, model, systemPrompt string, promptCache types.PromptCacheConfig, verbose bool, store session.Store, providerName string, perm *permission.Chain, compactor compaction.Compactor) (*Agent, error) {
 	if store == nil {
 		return nil, fmt.Errorf("session store is required")
 	}
@@ -41,6 +45,7 @@ func New(provider llm.Provider, registry *tools.Registry, model, systemPrompt st
 		store:        store,
 		providerName: providerName,
 		permission:   perm,
+		compactor:    compactor,
 	}, nil
 }
 
@@ -70,6 +75,8 @@ func (a *Agent) InitNewSession(ctx context.Context) error {
 	}
 	a.sessionID = s.ID
 	a.sessionName = ""
+	a.archive = nil
+	a.compactions = nil
 	a.messages = nil
 	return nil
 }
@@ -81,8 +88,20 @@ func (a *Agent) ResumeSession(ctx context.Context, id string) error {
 	}
 	a.sessionID = s.ID
 	a.sessionName = s.Name
-	a.messages = s.Messages
-	return nil
+	a.archive = append([]types.Message(nil), s.Messages...)
+	a.compactions = append([]session.CompactionRecord(nil), s.Compactions...)
+	a.rebuildProjection()
+	return a.maybeCompact(ctx, false, "")
+}
+
+func (a *Agent) CompactSession(ctx context.Context, customInstructions string) error {
+	if a.sessionID == "" {
+		return fmt.Errorf("no active session")
+	}
+	if err := a.maybeCompact(ctx, true, customInstructions); err != nil {
+		return err
+	}
+	return a.persist(ctx)
 }
 
 func (a *Agent) ResetSession(ctx context.Context) error {
@@ -99,27 +118,60 @@ func (a *Agent) SetSessionName(ctx context.Context, name string) error {
 
 func (a *Agent) persist(ctx context.Context) error {
 	return a.store.Save(ctx, &session.Session{
-		ID:       a.sessionID,
-		Name:     a.sessionName,
-		Provider: a.providerName,
-		Model:    a.model,
-		Messages: a.messages,
+		ID:          a.sessionID,
+		Name:        a.sessionName,
+		Provider:    a.providerName,
+		Model:       a.model,
+		Messages:    a.archive,
+		Compactions: a.compactions,
 	})
 }
 
-// Run รับ input จากผู้ใช้ แล้ววน loop จน LLM หยุดเรียก tool
-// คืน text สุดท้ายที่ LLM ตอบ
+func (a *Agent) rebuildProjection() {
+	a.messages = compaction.ProjectMessages(a.archive, a.compactions)
+}
+
+func (a *Agent) appendArchive(msgs ...types.Message) {
+	a.archive = append(a.archive, msgs...)
+	a.rebuildProjection()
+}
+
+func (a *Agent) maybeCompact(ctx context.Context, force bool, customInstructions string) error {
+	if a.compactor == nil {
+		return nil
+	}
+	res, err := a.compactor.MaybeCompact(ctx, compaction.Request{
+		Archive:            a.archive,
+		Compactions:        a.compactions,
+		SystemPrompt:       a.systemPrompt,
+		Model:              a.model,
+		Force:              force,
+		CustomInstructions: customInstructions,
+	})
+	if err != nil {
+		return fmt.Errorf("compact: %w", err)
+	}
+	a.archive = res.Archive
+	a.compactions = res.Compactions
+	a.messages = res.Projected
+	return nil
+}
+
 func (a *Agent) Run(ctx context.Context, userInput string, onStream func(types.StreamEvent)) (string, error) {
 	if a.sessionID == "" {
 		return "", fmt.Errorf("no active session")
 	}
 
-	a.messages = append(a.messages, types.Message{
+	a.appendArchive(types.Message{
 		Role:    "user",
 		Content: userInput,
 	})
 
 	for {
+		if err := a.maybeCompact(ctx, false, ""); err != nil {
+			return "", err
+		}
+
 		resp, err := a.provider.Complete(ctx, types.CompleteRequest{
 			SystemPrompt: a.systemPrompt,
 			Messages:     a.messages,
@@ -133,7 +185,7 @@ func (a *Agent) Run(ctx context.Context, userInput string, onStream func(types.S
 			return "", fmt.Errorf("llm call: %w", err)
 		}
 
-		a.messages = append(a.messages, types.Message{
+		a.appendArchive(types.Message{
 			Role:      "assistant",
 			Content:   resp.Text,
 			ToolCalls: resp.ToolCalls,
@@ -163,7 +215,7 @@ func (a *Agent) Run(ctx context.Context, userInput string, onStream func(types.S
 					ToolCallID: tc.ID,
 				})
 				if err != nil {
-					a.messages = append(a.messages, types.Message{
+					a.appendArchive(types.Message{
 						Role:       "tool",
 						Content:    fmt.Sprintf("error: permission check failed: %v", err),
 						ToolCallID: tc.ID,
@@ -176,7 +228,7 @@ func (a *Agent) Run(ctx context.Context, userInput string, onStream func(types.S
 					if msg == "" {
 						msg = "permission denied"
 					}
-					a.messages = append(a.messages, types.Message{
+					a.appendArchive(types.Message{
 						Role:       "tool",
 						Content:    fmt.Sprintf("error: %s", msg),
 						ToolCallID: tc.ID,
@@ -196,7 +248,7 @@ func (a *Agent) Run(ctx context.Context, userInput string, onStream func(types.S
 				isError = true
 			}
 
-			a.messages = append(a.messages, types.Message{
+			a.appendArchive(types.Message{
 				Role:       "tool",
 				Content:    result,
 				ToolCallID: tc.ID,

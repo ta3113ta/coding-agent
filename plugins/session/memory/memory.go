@@ -93,6 +93,20 @@ func (m *Store) List(ctx context.Context) ([]session.Meta, error) {
 func cloneSession(s *session.Session) *session.Session {
 	cp := *s
 	cp.Messages = append([]types.Message(nil), s.Messages...)
+	if len(s.Compactions) > 0 {
+		cp.Compactions = make([]session.CompactionRecord, len(s.Compactions))
+		for i, c := range s.Compactions {
+			cp.Compactions[i] = session.CompactionRecord{
+				ID:             c.ID,
+				Timestamp:      c.Timestamp,
+				Summary:        c.Summary,
+				FirstKeptIndex: c.FirstKeptIndex,
+				TokensBefore:   c.TokensBefore,
+				ReadFiles:      append([]string(nil), c.ReadFiles...),
+				ModifiedFiles:  append([]string(nil), c.ModifiedFiles...),
+			}
+		}
+	}
 	return &cp
 }
 

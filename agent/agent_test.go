@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"coding-agent/compaction"
 	"coding-agent/permission"
 	"coding-agent/session"
 	"coding-agent/tools"
@@ -53,6 +54,10 @@ func (m *memStore) Get(ctx context.Context, id string) (*session.Session, error)
 	}
 	cp := *s
 	cp.Messages = append([]types.Message(nil), s.Messages...)
+	if len(s.Compactions) > 0 {
+		cp.Compactions = make([]session.CompactionRecord, len(s.Compactions))
+		copy(cp.Compactions, s.Compactions)
+	}
 	return &cp, nil
 }
 
@@ -69,6 +74,10 @@ func (m *memStore) Save(ctx context.Context, s *session.Session) error {
 	s.UpdatedAt = time.Now().UTC()
 	cp := *s
 	cp.Messages = append([]types.Message(nil), s.Messages...)
+	if len(s.Compactions) > 0 {
+		cp.Compactions = make([]session.CompactionRecord, len(s.Compactions))
+		copy(cp.Compactions, s.Compactions)
+	}
 	m.sessions[s.ID] = &cp
 	return nil
 }
@@ -111,9 +120,13 @@ func newTestAgent(t *testing.T, provider *fakeStreamProvider) (*Agent, *memStore
 }
 
 func newTestAgentWithPermission(t *testing.T, provider *fakeStreamProvider, perm *permission.Chain) (*Agent, *memStore) {
+	return newTestAgentWithOptions(t, provider, perm, nil)
+}
+
+func newTestAgentWithOptions(t *testing.T, provider *fakeStreamProvider, perm *permission.Chain, compactor compaction.Compactor) (*Agent, *memStore) {
 	t.Helper()
 	store := newMemStore()
-	ag, err := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", perm)
+	ag, err := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", perm, compactor)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -248,7 +261,7 @@ func TestSetSessionName(t *testing.T) {
 func TestInitNewSession(t *testing.T) {
 	provider := &fakeStreamProvider{text: "ok"}
 	store := newMemStore()
-	ag, err := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", nil)
+	ag, err := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", nil, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -297,7 +310,7 @@ func TestRun_PermissionDenied(t *testing.T) {
 	reg.Register(&stubTool{onExecute: func() { executed = true }})
 
 	store := newMemStore()
-	ag, err := New(provider, reg, "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", perm)
+	ag, err := New(provider, reg, "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", perm, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -350,4 +363,79 @@ func (s *stubTool) Execute(input json.RawMessage) (string, error) {
 		s.onExecute()
 	}
 	return "executed", nil
+}
+
+type recordingCompactor struct {
+	calls int
+}
+
+func (r *recordingCompactor) MaybeCompact(ctx context.Context, req compaction.Request) (compaction.Result, error) {
+	_ = ctx
+	r.calls++
+	projected := compaction.ProjectMessages(req.Archive, req.Compactions)
+	return compaction.Result{Archive: req.Archive, Compactions: req.Compactions, Projected: projected}, nil
+}
+
+func TestRun_InvokesCompactorBeforeComplete(t *testing.T) {
+	provider := &fakeStreamProvider{text: "ok"}
+	comp := &recordingCompactor{}
+	ag, _ := newTestAgentWithOptions(t, provider, nil, comp)
+
+	if _, err := ag.Run(context.Background(), "hi", nil); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if comp.calls < 1 {
+		t.Fatalf("compactor calls = %d, want at least 1", comp.calls)
+	}
+}
+
+type forceCompactor struct{}
+
+func (forceCompactor) MaybeCompact(ctx context.Context, req compaction.Request) (compaction.Result, error) {
+	_ = ctx
+	projected := compaction.ProjectMessages(req.Archive, req.Compactions)
+	if len(req.Archive) <= 1 {
+		return compaction.Result{Archive: req.Archive, Compactions: req.Compactions, Projected: projected}, nil
+	}
+	record := session.CompactionRecord{
+		Summary:        "compact",
+		FirstKeptIndex: len(req.Archive) - 1,
+	}
+	comps := append(append([]session.CompactionRecord(nil), req.Compactions...), record)
+	return compaction.Result{
+		Archive:     req.Archive,
+		Compactions: comps,
+		Projected:   []types.Message{{Role: "user", Content: "[compacted]"}},
+		Compacted:   true,
+	}, nil
+}
+
+func TestCompactSession(t *testing.T) {
+	provider := &fakeStreamProvider{text: "ok"}
+	ag, store := newTestAgentWithOptions(t, provider, nil, forceCompactor{})
+
+	ag.appendArchive(
+		types.Message{Role: "user", Content: "old"},
+		types.Message{Role: "assistant", Content: "reply"},
+		types.Message{Role: "user", Content: "recent"},
+	)
+	if err := ag.CompactSession(context.Background(), ""); err != nil {
+		t.Fatalf("CompactSession: %v", err)
+	}
+	if len(ag.messages) != 1 {
+		t.Fatalf("projected len = %d, want 1 after compact", len(ag.messages))
+	}
+	if len(ag.archive) != 3 {
+		t.Fatalf("archive len = %d, want 3 unchanged", len(ag.archive))
+	}
+	s, err := store.Get(context.Background(), ag.CurrentSessionID())
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if len(s.Messages) != 3 {
+		t.Fatalf("persisted archive = %d, want 3", len(s.Messages))
+	}
+	if len(s.Compactions) != 1 {
+		t.Fatalf("persisted compactions = %d, want 1", len(s.Compactions))
+	}
 }

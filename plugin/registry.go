@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"coding-agent/compaction"
 	"coding-agent/config"
 	"coding-agent/llm"
 	"coding-agent/permission"
@@ -73,6 +74,13 @@ func RegisterPermissionHook(app *App, h permission.Hook) {
 		app.Permission = permission.NewChain()
 	}
 	app.Permission.Register(h)
+}
+
+func RegisterCompactor(app *App, c compaction.Compactor) {
+	if c == nil {
+		return
+	}
+	app.Compactor = c
 }
 
 func AppendPrompt(app *App, prompt string) {

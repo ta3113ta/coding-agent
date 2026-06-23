@@ -101,8 +101,15 @@ func handleSlashCommand(ctx context.Context, ag plugin.AgentHandle, line string)
 				fmt.Printf("session name set: %s\n", ag.SessionLabel())
 			}
 		}
+	case "/compact":
+		instructions := strings.TrimSpace(strings.TrimPrefix(line, "/compact"))
+		if err := ag.CompactSession(ctx, instructions); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		} else {
+			fmt.Println("context compacted")
+		}
 	default:
-		fmt.Fprintln(os.Stderr, "unknown command; try /new, /sessions, /resume <id>, /session, /name <name>")
+		fmt.Fprintln(os.Stderr, "unknown command; try /new, /sessions, /resume <id>, /session, /name <name>, /compact")
 		return false
 	}
 	return true

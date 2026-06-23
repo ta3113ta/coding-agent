@@ -150,6 +150,64 @@ func TestFileStoreNameRoundTrip(t *testing.T) {
 	}
 }
 
+func TestFileStoreBackwardCompatNoCompactions(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "legacy.json")
+	legacy := `{"id":"legacy","created_at":"2026-06-18T00:00:00Z","updated_at":"2026-06-18T00:00:00Z","provider":"anthropic","model":"m","messages":[{"role":"user","content":"hi"}]}`
+	if err := os.WriteFile(path, []byte(legacy), 0o644); err != nil {
+		t.Fatalf("write legacy: %v", err)
+	}
+	fs, err := New(dir)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	got, err := fs.Get(context.Background(), "legacy")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if len(got.Messages) != 1 || got.Compactions != nil {
+		t.Fatalf("messages = %+v compactions = %+v", got.Messages, got.Compactions)
+	}
+}
+
+func TestFileStoreCompactionRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	fs, err := New(dir)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx := context.Background()
+	s, err := fs.Create(ctx, "anthropic", "model")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	s.Messages = []types.Message{
+		{Role: "user", Content: "old"},
+		{Role: "user", Content: "recent"},
+	}
+	s.Compactions = []session.CompactionRecord{{
+		ID:             "c1",
+		Timestamp:      time.Now().UTC(),
+		Summary:        "summarized old",
+		FirstKeptIndex: 1,
+		TokensBefore:   500,
+		ReadFiles:      []string{"foo.go"},
+	}}
+	if err := fs.Save(ctx, s); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got, err := fs.Get(ctx, s.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if len(got.Compactions) != 1 || got.Compactions[0].Summary != "summarized old" {
+		t.Fatalf("compactions = %+v", got.Compactions)
+	}
+	if len(got.Messages) != 2 {
+		t.Fatalf("archive messages = %d, want 2", len(got.Messages))
+	}
+}
+
 func TestFileStoreBackwardCompatNoName(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "legacy.json")

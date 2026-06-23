@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 
+	"coding-agent/compaction"
 	"coding-agent/config"
 	"coding-agent/llm"
 	"coding-agent/permission"
@@ -21,6 +22,7 @@ type App struct {
 	Skills       *skills.Registry
 	SessionStore session.Store
 	Permission   *permission.Chain
+	Compactor    compaction.Compactor
 }
 
 type Plugin interface {
@@ -55,6 +57,7 @@ type SessionManager interface {
 	SetSessionName(ctx context.Context, name string) error
 	CurrentSessionName() string
 	SessionLabel() string
+	CompactSession(ctx context.Context, customInstructions string) error
 }
 
 type Runner interface {

@@ -21,13 +21,24 @@ type FileStore struct {
 }
 
 type sessionDTO struct {
-	ID        string       `json:"id"`
-	CreatedAt time.Time    `json:"created_at"`
-	UpdatedAt time.Time    `json:"updated_at"`
-	Provider  string       `json:"provider"`
-	Model     string       `json:"model"`
-	Name      string       `json:"name,omitempty"`
-	Messages  []messageDTO `json:"messages"`
+	ID          string            `json:"id"`
+	CreatedAt   time.Time         `json:"created_at"`
+	UpdatedAt   time.Time         `json:"updated_at"`
+	Provider    string            `json:"provider"`
+	Model       string            `json:"model"`
+	Name        string            `json:"name,omitempty"`
+	Messages    []messageDTO      `json:"messages"`
+	Compactions []compactionDTO   `json:"compactions,omitempty"`
+}
+
+type compactionDTO struct {
+	ID             string    `json:"id"`
+	Timestamp      time.Time `json:"timestamp"`
+	Summary        string    `json:"summary"`
+	FirstKeptIndex int       `json:"first_kept_index"`
+	TokensBefore   int       `json:"tokens_before"`
+	ReadFiles      []string  `json:"read_files,omitempty"`
+	ModifiedFiles  []string  `json:"modified_files,omitempty"`
 }
 
 type messageDTO struct {
@@ -192,6 +203,20 @@ func sessionToDTO(s *session.Session) sessionDTO {
 			})
 		}
 	}
+	if len(s.Compactions) > 0 {
+		dto.Compactions = make([]compactionDTO, len(s.Compactions))
+		for i, c := range s.Compactions {
+			dto.Compactions[i] = compactionDTO{
+				ID:             c.ID,
+				Timestamp:      c.Timestamp,
+				Summary:        c.Summary,
+				FirstKeptIndex: c.FirstKeptIndex,
+				TokensBefore:   c.TokensBefore,
+				ReadFiles:      append([]string(nil), c.ReadFiles...),
+				ModifiedFiles:  append([]string(nil), c.ModifiedFiles...),
+			}
+		}
+	}
 	return dto
 }
 
@@ -218,6 +243,20 @@ func dtoToSession(dto sessionDTO) *session.Session {
 				Name:  tc.Name,
 				Input: tc.Input,
 			})
+		}
+	}
+	if len(dto.Compactions) > 0 {
+		s.Compactions = make([]session.CompactionRecord, len(dto.Compactions))
+		for i, c := range dto.Compactions {
+			s.Compactions[i] = session.CompactionRecord{
+				ID:             c.ID,
+				Timestamp:      c.Timestamp,
+				Summary:        c.Summary,
+				FirstKeptIndex: c.FirstKeptIndex,
+				TokensBefore:   c.TokensBefore,
+				ReadFiles:      append([]string(nil), c.ReadFiles...),
+				ModifiedFiles:  append([]string(nil), c.ModifiedFiles...),
+			}
 		}
 	}
 	return s
