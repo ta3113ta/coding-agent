@@ -22,6 +22,7 @@ var gatedTools = map[string]bool{
 	"run_bash":    true,
 	"write_file":  true,
 	"str_replace": true,
+	"task":        true,
 }
 
 type Hook struct {

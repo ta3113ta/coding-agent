@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 type stubHook struct {
@@ -32,23 +34,15 @@ func (h *inputRewriteHook) BeforeToolUse(ctx context.Context, req ToolUseRequest
 func TestChain_EmptyAllows(t *testing.T) {
 	c := NewChain()
 	res, err := c.Evaluate(context.Background(), ToolUseRequest{ToolName: "run_bash"})
-	if err != nil {
-		t.Fatalf("Evaluate: %v", err)
-	}
-	if res.Decision != Allow {
-		t.Fatalf("decision = %v, want Allow", res.Decision)
-	}
+	require.NoError(t, err)
+	require.Equal(t, Allow, res.Decision)
 }
 
 func TestChain_NilAllows(t *testing.T) {
 	var c *Chain
 	res, err := c.Evaluate(context.Background(), ToolUseRequest{ToolName: "run_bash"})
-	if err != nil {
-		t.Fatalf("Evaluate: %v", err)
-	}
-	if res.Decision != Allow {
-		t.Fatalf("decision = %v, want Allow", res.Decision)
-	}
+	require.NoError(t, err)
+	require.Equal(t, Allow, res.Decision)
 }
 
 func TestChain_AllAllow(t *testing.T) {
@@ -57,15 +51,10 @@ func TestChain_AllAllow(t *testing.T) {
 	c := NewChain(h1, h2)
 
 	res, err := c.Evaluate(context.Background(), ToolUseRequest{ToolName: "write_file"})
-	if err != nil {
-		t.Fatalf("Evaluate: %v", err)
-	}
-	if res.Decision != Allow {
-		t.Fatalf("decision = %v, want Allow", res.Decision)
-	}
-	if h1.called != 1 || h2.called != 1 {
-		t.Fatalf("calls = %d, %d, want 1, 1", h1.called, h2.called)
-	}
+	require.NoError(t, err)
+	require.Equal(t, Allow, res.Decision)
+	require.Equal(t, 1, h1.called)
+	require.Equal(t, 1, h2.called)
 }
 
 func TestChain_DenyShortCircuit(t *testing.T) {
@@ -74,15 +63,10 @@ func TestChain_DenyShortCircuit(t *testing.T) {
 	c := NewChain(h1, h2)
 
 	res, err := c.Evaluate(context.Background(), ToolUseRequest{ToolName: "run_bash"})
-	if err != nil {
-		t.Fatalf("Evaluate: %v", err)
-	}
-	if res.Decision != Deny || res.Message != "blocked" {
-		t.Fatalf("result = %+v, want Deny blocked", res)
-	}
-	if h2.called != 0 {
-		t.Fatal("second hook should not run after deny")
-	}
+	require.NoError(t, err)
+	require.Equal(t, Deny, res.Decision)
+	require.Equal(t, "blocked", res.Message)
+	require.Equal(t, 0, h2.called)
 }
 
 func TestChain_AskContinuesChain(t *testing.T) {
@@ -91,15 +75,10 @@ func TestChain_AskContinuesChain(t *testing.T) {
 	c := NewChain(h1, h2)
 
 	res, err := c.Evaluate(context.Background(), ToolUseRequest{ToolName: "run_bash"})
-	if err != nil {
-		t.Fatalf("Evaluate: %v", err)
-	}
-	if res.Decision != Allow {
-		t.Fatalf("result = %+v, want Allow after Ask passes through", res)
-	}
-	if h1.called != 1 || h2.called != 1 {
-		t.Fatalf("calls = %d, %d, want both hooks to run", h1.called, h2.called)
-	}
+	require.NoError(t, err)
+	require.Equal(t, Allow, res.Decision)
+	require.Equal(t, 1, h1.called)
+	require.Equal(t, 1, h2.called)
 }
 
 func TestChain_HookErrorFailsClosed(t *testing.T) {
@@ -107,12 +86,8 @@ func TestChain_HookErrorFailsClosed(t *testing.T) {
 	c := NewChain(h)
 
 	res, err := c.Evaluate(context.Background(), ToolUseRequest{ToolName: "run_bash"})
-	if err != nil {
-		t.Fatalf("Evaluate: %v", err)
-	}
-	if res.Decision != Deny {
-		t.Fatalf("decision = %v, want Deny on hook error", res.Decision)
-	}
+	require.NoError(t, err)
+	require.Equal(t, Deny, res.Decision)
 }
 
 func TestChain_UpdatedInput(t *testing.T) {
@@ -123,13 +98,7 @@ func TestChain_UpdatedInput(t *testing.T) {
 		ToolName: "run_bash",
 		Input:    json.RawMessage(`{"command":"rm -rf /"}`),
 	})
-	if err != nil {
-		t.Fatalf("Evaluate: %v", err)
-	}
-	if res.Decision != Allow {
-		t.Fatalf("decision = %v, want Allow", res.Decision)
-	}
-	if string(res.UpdatedInput) != string(newInput) {
-		t.Fatalf("UpdatedInput = %s, want %s", res.UpdatedInput, newInput)
-	}
+	require.NoError(t, err)
+	require.Equal(t, Allow, res.Decision)
+	require.Equal(t, string(newInput), string(res.UpdatedInput))
 }

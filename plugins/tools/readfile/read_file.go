@@ -2,6 +2,7 @@ package readfile
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -29,7 +30,8 @@ func (ReadFile) Definition() types.ToolDefinition {
 	}
 }
 
-func (ReadFile) Execute(input json.RawMessage) (string, error) {
+func (ReadFile) Execute(ctx context.Context, input json.RawMessage) (string, error) {
+	_ = ctx
 	var args struct {
 		Path   string `json:"path"`
 		Offset int    `json:"offset"`

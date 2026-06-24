@@ -36,6 +36,7 @@ func main() {
 	noSessionFlag := flag.Bool("no-session", false, "Ephemeral mode; do not save sessions")
 	noPermissionFlag := flag.Bool("no-permission", false, "Disable permission hooks before tool execution")
 	noCompactionFlag := flag.Bool("no-compaction", false, "Disable context compaction")
+	noSpawnFlag := flag.Bool("no-spawn", false, "Disable sub-agent task spawning")
 	nameFlag := flag.String("name", "", "Set session display name at startup")
 	flag.Parse()
 
@@ -58,6 +59,7 @@ func main() {
 	cfg.ApplySessionFlags(*sessionScopeFlag, *sessionDirFlag)
 	cfg.ApplyPermissionFlags(*noPermissionFlag)
 	cfg.ApplyCompactionFlags(*noCompactionFlag)
+	cfg.ApplySpawnFlags(*noSpawnFlag)
 
 	app, err := plugin.Bootstrap(cfg, builtin.Default...)
 	if err != nil {

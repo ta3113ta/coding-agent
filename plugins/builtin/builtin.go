@@ -12,10 +12,12 @@ import (
 	"coding-agent/plugins/session/filestore"
 	"coding-agent/plugins/session/memory"
 	"coding-agent/plugins/skills"
+	spawnrunner "coding-agent/plugins/spawn/runner"
 	"coding-agent/plugins/tools/listdir"
 	"coding-agent/plugins/tools/readfile"
 	"coding-agent/plugins/tools/runbash"
 	"coding-agent/plugins/tools/strreplace"
+	"coding-agent/plugins/tools/task"
 	"coding-agent/plugins/tools/writefile"
 )
 
@@ -42,6 +44,10 @@ var Default = []plugin.Plugin{
 
 	// compaction plugins (after providers)
 	summarize.Plugin{},
+
+	// spawn plugins (after tools + providers)
+	spawnrunner.Plugin{},
+	task.Plugin{},
 
 	// session plugins
 	filestore.Plugin{},

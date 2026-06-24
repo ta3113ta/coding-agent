@@ -3,19 +3,16 @@ package skills
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func writeSkill(t *testing.T, dir, name, content string) {
 	t.Helper()
 	skillDir := filepath.Join(dir, name)
-	if err := os.MkdirAll(skillDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.MkdirAll(skillDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(content), 0o644))
 }
 
 func skillContent(name, desc string) string {
@@ -57,30 +54,20 @@ func TestDiscoverDedupPriority(t *testing.T) {
 		IncludePersonal: true,
 		Bundled:         bundled,
 	})
-	if err != nil {
-		t.Fatalf("Discover: %v", err)
-	}
+	require.NoError(t, err)
 
 	shared, ok := reg.Get("shared-skill")
-	if !ok {
-		t.Fatal("shared-skill not found")
-	}
-	if shared.Source != SourceProject {
-		t.Fatalf("shared-skill source = %q, want project", shared.Source)
-	}
-	if shared.Description != "project version" {
-		t.Fatalf("shared-skill description = %q", shared.Description)
-	}
+	require.True(t, ok)
+	require.Equal(t, SourceProject, shared.Source)
+	require.Equal(t, "project version", shared.Description)
 
 	personal, ok := reg.Get("personal-only")
-	if !ok || personal.Source != SourcePersonal {
-		t.Fatalf("personal-only: %+v", personal)
-	}
+	require.True(t, ok)
+	require.Equal(t, SourcePersonal, personal.Source)
 
 	bonly, ok := reg.Get("bundled-only")
-	if !ok || bonly.Source != SourceBundled {
-		t.Fatalf("bundled-only: %+v", bonly)
-	}
+	require.True(t, ok)
+	require.Equal(t, SourceBundled, bonly.Source)
 }
 
 func TestDiscoverMissingDirs(t *testing.T) {
@@ -89,12 +76,8 @@ func TestDiscoverMissingDirs(t *testing.T) {
 		HomeDir:         filepath.Join(t.TempDir(), "home"),
 		IncludePersonal: true,
 	})
-	if err != nil {
-		t.Fatalf("Discover: %v", err)
-	}
-	if reg.Len() != 0 {
-		t.Fatalf("expected empty registry, got %d", reg.Len())
-	}
+	require.NoError(t, err)
+	require.Equal(t, 0, reg.Len())
 }
 
 func TestRegistryIndexPrompt(t *testing.T) {
@@ -105,17 +88,12 @@ func TestRegistryIndexPrompt(t *testing.T) {
 		Source:      SourceProject,
 	}})
 	prompt := reg.IndexPrompt()
-	if prompt == "" {
-		t.Fatal("expected non-empty prompt")
-	}
-	if !strings.Contains(prompt, "Available Skills") || !strings.Contains(prompt, "foo") {
-		t.Fatalf("prompt missing content: %q", prompt)
-	}
+	require.NotEmpty(t, prompt)
+	require.Contains(t, prompt, "Available Skills")
+	require.Contains(t, prompt, "foo")
 }
 
 func TestRegistryIndexPromptEmpty(t *testing.T) {
 	reg := NewRegistry(nil)
-	if reg.IndexPrompt() != "" {
-		t.Fatal("expected empty prompt for empty registry")
-	}
+	require.Empty(t, reg.IndexPrompt())
 }

@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"coding-agent/types"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestSplitMessages_KeepAllWhenShort(t *testing.T) {
@@ -14,12 +16,8 @@ func TestSplitMessages_KeepAllWhenShort(t *testing.T) {
 		{Role: "assistant", Content: "hello"},
 	}
 	prefix, suffix := SplitMessages(msgs, 12)
-	if prefix != nil {
-		t.Fatalf("prefix = %v, want nil", prefix)
-	}
-	if len(suffix) != 2 {
-		t.Fatalf("suffix len = %d, want 2", len(suffix))
-	}
+	require.Nil(t, prefix)
+	require.Len(t, suffix, 2)
 }
 
 func TestSplitMessages_SplitsPrefixSuffix(t *testing.T) {
@@ -28,12 +26,8 @@ func TestSplitMessages_SplitsPrefixSuffix(t *testing.T) {
 		msgs[i] = types.Message{Role: "user", Content: "msg"}
 	}
 	prefix, suffix := SplitMessages(msgs, 5)
-	if len(prefix) != 15 {
-		t.Fatalf("prefix len = %d, want 15", len(prefix))
-	}
-	if len(suffix) != 5 {
-		t.Fatalf("suffix len = %d, want 5", len(suffix))
-	}
+	require.Len(t, prefix, 15)
+	require.Len(t, suffix, 5)
 }
 
 func TestSplitMessages_DoesNotSplitToolGroup(t *testing.T) {
@@ -59,17 +53,12 @@ func TestSplitMessages_DoesNotSplitToolGroup(t *testing.T) {
 	prefix, suffix := SplitMessages(msgs, 3)
 	for i, m := range suffix {
 		if m.Role == "tool" {
-			if i == 0 || suffix[i-1].Role != "assistant" || len(suffix[i-1].ToolCalls) == 0 {
-				t.Fatalf("tool result at suffix[%d] not preceded by assistant tool_calls", i)
-			}
+			require.False(t, i == 0 || suffix[i-1].Role != "assistant" || len(suffix[i-1].ToolCalls) == 0,
+				"tool result at suffix[%d] not preceded by assistant tool_calls", i)
 		}
 	}
-	if len(prefix) == 0 {
-		t.Fatal("expected non-empty prefix")
-	}
-	if len(suffix) < 3 {
-		t.Fatalf("suffix len = %d, want at least 3", len(suffix))
-	}
+	require.NotEmpty(t, prefix)
+	require.GreaterOrEqual(t, len(suffix), 3)
 }
 
 func TestEstimateTokens(t *testing.T) {
@@ -78,9 +67,7 @@ func TestEstimateTokens(t *testing.T) {
 		{Role: "assistant", Content: "efgh"},
 	}
 	got := EstimateTokens(msgs)
-	if got != 2 {
-		t.Fatalf("EstimateTokens = %d, want 2", got)
-	}
+	require.Equal(t, 2, got)
 }
 
 func TestSplitMessagesByTokens_KeepAllWhenShort(t *testing.T) {
@@ -89,12 +76,8 @@ func TestSplitMessagesByTokens_KeepAllWhenShort(t *testing.T) {
 		{Role: "assistant", Content: "hello"},
 	}
 	prefix, suffix := SplitMessagesByTokens(msgs, 20000)
-	if prefix != nil {
-		t.Fatalf("prefix = %v, want nil", prefix)
-	}
-	if len(suffix) != 2 {
-		t.Fatalf("suffix len = %d, want 2", len(suffix))
-	}
+	require.Nil(t, prefix)
+	require.Len(t, suffix, 2)
 }
 
 func TestSplitMessagesByTokens_SplitsByBudget(t *testing.T) {
@@ -103,15 +86,9 @@ func TestSplitMessagesByTokens_SplitsByBudget(t *testing.T) {
 		msgs[i] = types.Message{Role: "user", Content: strings.Repeat("x", 400)} // ~100 tokens each
 	}
 	prefix, suffix := SplitMessagesByTokens(msgs, 200) // keep ~200 tokens = ~2 msgs
-	if len(prefix) == 0 {
-		t.Fatal("expected prefix")
-	}
-	if len(suffix) == 0 {
-		t.Fatal("expected suffix")
-	}
-	if len(prefix)+len(suffix) != len(msgs) {
-		t.Fatalf("split mismatch: %d + %d != %d", len(prefix), len(suffix), len(msgs))
-	}
+	require.NotEmpty(t, prefix)
+	require.NotEmpty(t, suffix)
+	require.Equal(t, len(msgs), len(prefix)+len(suffix))
 }
 
 func TestSplitMessagesByTokens_DoesNotSplitToolGroup(t *testing.T) {
@@ -134,12 +111,9 @@ func TestSplitMessagesByTokens_DoesNotSplitToolGroup(t *testing.T) {
 	prefix, suffix := SplitMessagesByTokens(msgs, 10)
 	for i, m := range suffix {
 		if m.Role == "tool" {
-			if i == 0 || suffix[i-1].Role != "assistant" || len(suffix[i-1].ToolCalls) == 0 {
-				t.Fatalf("tool result at suffix[%d] not preceded by assistant tool_calls", i)
-			}
+			require.False(t, i == 0 || suffix[i-1].Role != "assistant" || len(suffix[i-1].ToolCalls) == 0,
+				"tool result at suffix[%d] not preceded by assistant tool_calls", i)
 		}
 	}
-	if len(prefix) == 0 {
-		t.Fatal("expected non-empty prefix")
-	}
+	require.NotEmpty(t, prefix)
 }

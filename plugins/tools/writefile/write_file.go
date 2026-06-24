@@ -1,6 +1,7 @@
 package writefile
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -27,7 +28,8 @@ func (WriteFile) Definition() types.ToolDefinition {
 	}
 }
 
-func (WriteFile) Execute(input json.RawMessage) (string, error) {
+func (WriteFile) Execute(ctx context.Context, input json.RawMessage) (string, error) {
+	_ = ctx
 	var args struct {
 		Path    string `json:"path"`
 		Content string `json:"content"`

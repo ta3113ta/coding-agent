@@ -2,6 +2,13 @@
 
 This project uses a **minimal core + compile-time plugins** design. The core defines contracts and the agent loop; all implementations live under `plugins/`.
 
+## Documentation
+
+- **AGENTS.md** — keep under **200 lines** (high-level index; link out for detail)
+- **Every other `*.md`** — keep under **300 lines**
+- Over budget → split into a new file or prune redundant content; do not compress prose to fit
+- Cursor rule: [`.cursor/rules/documentation-limits.mdc`](.cursor/rules/documentation-limits.mdc)
+
 ## Core (do not add implementations here)
 
 | Package | Purpose |
@@ -14,6 +21,7 @@ This project uses a **minimal core + compile-time plugins** design. The core def
 | [`session/`](../session/session.go) | Session types + `Store` interface |
 | [`permission/`](../permission/permission.go) | Permission hook contract + chain |
 | [`compaction/`](../compaction/compaction.go) | Context compaction contract |
+| [`spawn/`](../spawn/spawn.go) | Sub-agent spawning contract |
 | [`plugin/`](../plugin/) | Plugin interfaces + `Bootstrap()` |
 
 **Rule:** If it talks to an external API, runs shell commands, or defines a persona — it is a plugin, not core.
@@ -119,6 +127,14 @@ Persist conversation history เป็น JSON ผ่าน `session.Store` cont
 - Config: `COMPACTION_ENABLED`, `COMPACTION_RESERVE_TOKENS`, `COMPACTION_KEEP_RECENT_TOKENS`, `COMPACTION_CONTEXT_WINDOW`, `--no-compaction`
 - Core: [`compaction/`](../compaction/) (serialize, project, split-by-tokens, file ops)
 - Plugin: [`plugins/compaction/summarize/`](../plugins/compaction/summarize/)
+
+## Sub-agent spawning
+
+Parent agent เรียก `task` tool เพื่อ spawn sub-agent แบบ sync — sub-agent ใช้ session ชั่วคราวใน memory, tool set ตาม profile, ไม่แตะ parent archive — ดู [ADR-0008](docs/adr/0008-sub-agent-task-spawning.md)
+
+- Config: `SPAWN_ENABLED`, `SPAWN_MAX_TURNS`, `--no-spawn`
+- Core: [`spawn/`](../spawn/) (types, profiles, Runner contract)
+- Plugins: [`plugins/spawn/runner/`](../plugins/spawn/runner/), [`plugins/tools/task/`](../plugins/tools/task/)
 
 ## Architecture Decision Records
 

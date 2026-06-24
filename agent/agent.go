@@ -167,7 +167,53 @@ func (a *Agent) Run(ctx context.Context, userInput string, onStream func(types.S
 		Content: userInput,
 	})
 
+	text, err := a.runLoop(ctx, 0, onStream)
+	if err != nil {
+		return "", err
+	}
+	if err := a.persist(ctx); err != nil {
+		return "", fmt.Errorf("save session: %w", err)
+	}
+	return text, nil
+}
+
+// RunSubtask runs an isolated turn sequence on the current session (ephemeral child agents).
+// maxTurns limits LLM rounds; 0 means unlimited. When exceeded, returns last text with a suffix.
+func (a *Agent) RunSubtask(ctx context.Context, prompt string, maxTurns int) (string, error) {
+	if a.sessionID == "" {
+		return "", fmt.Errorf("no active session")
+	}
+
+	a.appendArchive(types.Message{
+		Role:    "user",
+		Content: prompt,
+	})
+
+	text, err := a.runLoop(ctx, maxTurns, nil)
+	if err != nil {
+		return "", err
+	}
+	if err := a.persist(ctx); err != nil {
+		return "", fmt.Errorf("save session: %w", err)
+	}
+	return text, nil
+}
+
+func (a *Agent) runLoop(ctx context.Context, maxTurns int, onStream func(types.StreamEvent)) (string, error) {
+	turns := 0
+	var lastText string
+
 	for {
+		if maxTurns > 0 && turns >= maxTurns {
+			if lastText == "" {
+				lastText = "[sub-agent stopped: max turns reached]"
+			} else {
+				lastText += "\n\n[sub-agent stopped: max turns reached]"
+			}
+			return lastText, nil
+		}
+		turns++
+
 		if err := a.maybeCompact(ctx, false, ""); err != nil {
 			return "", err
 		}
@@ -185,6 +231,8 @@ func (a *Agent) Run(ctx context.Context, userInput string, onStream func(types.S
 			return "", fmt.Errorf("llm call: %w", err)
 		}
 
+		lastText = resp.Text
+
 		a.appendArchive(types.Message{
 			Role:      "assistant",
 			Content:   resp.Text,
@@ -192,9 +240,6 @@ func (a *Agent) Run(ctx context.Context, userInput string, onStream func(types.S
 		})
 
 		if len(resp.ToolCalls) == 0 {
-			if err := a.persist(ctx); err != nil {
-				return "", fmt.Errorf("save session: %w", err)
-			}
 			return resp.Text, nil
 		}
 
@@ -241,7 +286,7 @@ func (a *Agent) Run(ctx context.Context, userInput string, onStream func(types.S
 				}
 			}
 
-			result, err := a.registry.Dispatch(tc.Name, input)
+			result, err := a.registry.Dispatch(ctx, tc.Name, input)
 			isError := false
 			if err != nil {
 				result = fmt.Sprintf("error: %v", err)

@@ -28,6 +28,7 @@ const (
 	defaultCompactionReserveTokens    = 16384
 	defaultCompactionKeepRecentTokens = 20000
 	defaultCompactionContextWindow    = 200000
+	defaultSpawnMaxTurns              = 25
 )
 
 type Config struct {
@@ -47,6 +48,8 @@ type Config struct {
 	CompactionReserveTokens    int
 	CompactionKeepRecentTokens int
 	CompactionContextWindow    int
+	SpawnEnabled               bool
+	SpawnMaxTurns              int
 }
 
 func LoadFromEnv() Config {
@@ -82,6 +85,8 @@ func LoadFromEnv() Config {
 		CompactionReserveTokens:    parseIntEnv("COMPACTION_RESERVE_TOKENS", defaultCompactionReserveTokens),
 		CompactionKeepRecentTokens: parseIntEnv("COMPACTION_KEEP_RECENT_TOKENS", defaultCompactionKeepRecentTokens),
 		CompactionContextWindow:    parseIntEnv("COMPACTION_CONTEXT_WINDOW", defaultCompactionContextWindow),
+		SpawnEnabled:               parseBoolEnv("SPAWN_ENABLED", true),
+		SpawnMaxTurns:              parseIntEnv("SPAWN_MAX_TURNS", defaultSpawnMaxTurns),
 	}
 }
 
@@ -138,6 +143,12 @@ func parsePermissionHooksFile(raw string) string {
 		return ".coding-agent/hooks.json"
 	}
 	return raw
+}
+
+func (c *Config) ApplySpawnFlags(noSpawn bool) {
+	if noSpawn {
+		c.SpawnEnabled = false
+	}
 }
 
 func (c *Config) ApplyCompactionFlags(noCompaction bool) {
@@ -213,6 +224,9 @@ func (c Config) Validate() error {
 	}
 	if c.CompactionContextWindow <= 0 {
 		return fmt.Errorf("COMPACTION_CONTEXT_WINDOW must be positive")
+	}
+	if c.SpawnMaxTurns <= 0 {
+		return fmt.Errorf("SPAWN_MAX_TURNS must be positive")
 	}
 	return nil
 }

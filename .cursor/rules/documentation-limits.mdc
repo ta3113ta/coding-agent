@@ -1,0 +1,28 @@
+---
+description: Documentation size limits — AGENTS.md and all other markdown
+alwaysApply: true
+---
+
+# Documentation Size Limits
+
+Keep documentation scannable. When a file exceeds its budget, **split or prune** — do not compress prose to fit.
+
+## Limits
+
+| File | Max lines |
+|------|-----------|
+| `AGENTS.md` | 200 |
+| Every other `*.md` | 300 |
+
+`AGENTS.md` stays a high-level index; link out for detail. All other markdown (README, ADRs, SKILL.md, tools.md, etc.) shares the 300-line cap.
+
+## When over budget
+
+1. **Split** — extract a focused section into a new `*.md`; leave a short summary + link in the parent file.
+2. **Prune** — remove redundant or outdated content.
+
+Do not shorten sentences or drop examples just to stay under the limit.
+
+## AGENTS.md growth
+
+When adding a section would push `AGENTS.md` over 200 lines, move the detail to a separate `*.md` and keep only a one-line summary + link in `AGENTS.md`.

@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"coding-agent/types"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestExtractFileOps(t *testing.T) {
@@ -18,12 +20,10 @@ func TestExtractFileOps(t *testing.T) {
 		},
 	}
 	ops := ExtractFileOps(msgs, FileOps{})
-	if len(ops.ReadFiles) != 1 || ops.ReadFiles[0] != "a.go" {
-		t.Fatalf("read files = %v", ops.ReadFiles)
-	}
-	if len(ops.ModifiedFiles) != 1 || ops.ModifiedFiles[0] != "b.go" {
-		t.Fatalf("modified files = %v", ops.ModifiedFiles)
-	}
+	require.Len(t, ops.ReadFiles, 1)
+	require.Equal(t, "a.go", ops.ReadFiles[0])
+	require.Len(t, ops.ModifiedFiles, 1)
+	require.Equal(t, "b.go", ops.ModifiedFiles[0])
 }
 
 func TestExtractFileOps_Cumulative(t *testing.T) {
@@ -37,10 +37,7 @@ func TestExtractFileOps_Cumulative(t *testing.T) {
 		},
 	}
 	ops := ExtractFileOps(msgs, prior)
-	if len(ops.ReadFiles) != 1 || ops.ReadFiles[0] != "old.go" {
-		t.Fatalf("read files = %v", ops.ReadFiles)
-	}
-	if len(ops.ModifiedFiles) != 2 {
-		t.Fatalf("modified files = %v, want 2", ops.ModifiedFiles)
-	}
+	require.Len(t, ops.ReadFiles, 1)
+	require.Equal(t, "old.go", ops.ReadFiles[0])
+	require.Len(t, ops.ModifiedFiles, 2)
 }

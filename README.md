@@ -11,7 +11,8 @@ coding-agent/
 ├── main.go                          # bootstrap only
 ├── AGENTS.md                        # architecture guide
 ├── .cursor/rules/
-│   └── agent-architecture.mdc       # Cursor rule
+│   ├── agent-architecture.mdc       # Cursor rule
+│   └── documentation-limits.mdc   # doc size limits
 ├── config/
 │   └── config.go                    # env + flag config
 ├── plugin/
@@ -136,10 +137,10 @@ loop:
 - Session management — [ADR-0005](docs/adr/0005-session-management.md)
 - Permission hook plugin — [ADR-0006](docs/adr/0006-permission-hooks.md)
 - Context compaction — [ADR-0007](docs/adr/0007-context-compaction.md)
+- Sub-agents / task spawning — [ADR-0008](docs/adr/0008-sub-agent-task-spawning.md)
 
 ## Road map
 
-- **Sub-agents / task spawning**
 - **External search: web fetch + web search**
 - **TODO / plan tracking**
 - **Thinking level / reasoning tokens**

@@ -1,6 +1,7 @@
 package listdir
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -25,7 +26,8 @@ func (ListDir) Definition() types.ToolDefinition {
 	}
 }
 
-func (ListDir) Execute(input json.RawMessage) (string, error) {
+func (ListDir) Execute(ctx context.Context, input json.RawMessage) (string, error) {
+	_ = ctx
 	var args struct {
 		Path string `json:"path"`
 	}

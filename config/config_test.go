@@ -3,6 +3,9 @@ package config
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParsePromptCacheTTL(t *testing.T) {
@@ -16,18 +19,15 @@ func TestParsePromptCacheTTL(t *testing.T) {
 		{"invalid", PromptCacheTTL5m},
 	}
 	for _, tc := range tests {
-		if got := parsePromptCacheTTL(tc.in); got != tc.want {
-			t.Errorf("parsePromptCacheTTL(%q) = %q, want %q", tc.in, got, tc.want)
-		}
+		assert.Equal(t, tc.want, parsePromptCacheTTL(tc.in))
 	}
 }
 
 func TestConfigPromptCache(t *testing.T) {
 	cfg := Config{PromptCacheEnabled: true, PromptCacheTTL: PromptCacheTTL1h}
 	pc := cfg.PromptCache()
-	if !pc.Enabled || pc.TTL != PromptCacheTTL1h {
-		t.Fatalf("PromptCache() = %+v, want enabled 1h", pc)
-	}
+	require.True(t, pc.Enabled)
+	require.Equal(t, PromptCacheTTL1h, pc.TTL)
 }
 
 func TestValidatePromptCacheTTL(t *testing.T) {
@@ -37,71 +37,48 @@ func TestValidatePromptCacheTTL(t *testing.T) {
 		PromptCacheTTL:     "bad",
 		PromptCacheEnabled: true,
 	}
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("expected validation error for invalid PROMPT_CACHE_TTL")
-	}
+	require.Error(t, cfg.Validate())
 }
 
 func TestSessionDirPathProject(t *testing.T) {
 	cfg := Config{SessionScope: SessionScopeProject}
 	dir, err := cfg.SessionDirPath("/tmp/myproject")
-	if err != nil {
-		t.Fatalf("SessionDirPath: %v", err)
-	}
+	require.NoError(t, err)
 	want := filepath.Join("/tmp/myproject", ".coding-agent", "sessions")
-	if dir != want {
-		t.Fatalf("SessionDirPath = %q, want %q", dir, want)
-	}
+	require.Equal(t, want, dir)
 }
 
 func TestSessionDirPathGlobal(t *testing.T) {
 	cfg := Config{SessionScope: SessionScopeGlobal}
 	dir, err := cfg.SessionDirPath("/tmp/myproject")
-	if err != nil {
-		t.Fatalf("SessionDirPath: %v", err)
-	}
-	if !filepath.IsAbs(dir) {
-		t.Fatalf("global session dir should be absolute, got %q", dir)
-	}
-	if filepath.Base(dir) != "sessions" {
-		t.Fatalf("expected .../sessions, got %q", dir)
-	}
+	require.NoError(t, err)
+	require.True(t, filepath.IsAbs(dir))
+	require.Equal(t, "sessions", filepath.Base(dir))
 }
 
 func TestSessionDirPathOverride(t *testing.T) {
 	cfg := Config{SessionScope: SessionScopeGlobal, SessionDir: "/custom/sessions"}
 	dir, err := cfg.SessionDirPath("/tmp/myproject")
-	if err != nil {
-		t.Fatalf("SessionDirPath: %v", err)
-	}
-	if dir != "/custom/sessions" {
-		t.Fatalf("SessionDirPath = %q, want override", dir)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "/custom/sessions", dir)
 }
 
 func TestApplySessionFlags(t *testing.T) {
 	cfg := Config{}
 	cfg.ApplySessionFlags("global", "/data/sessions")
-	if cfg.SessionScope != SessionScopeGlobal || cfg.SessionDir != "/data/sessions" {
-		t.Fatalf("ApplySessionFlags = %+v", cfg)
-	}
+	require.Equal(t, SessionScopeGlobal, cfg.SessionScope)
+	require.Equal(t, "/data/sessions", cfg.SessionDir)
 }
 
 func TestApplyPermissionFlags(t *testing.T) {
 	cfg := Config{PermissionEnabled: true}
 	cfg.ApplyPermissionFlags(true)
-	if cfg.PermissionEnabled {
-		t.Fatal("expected PermissionEnabled=false after --no-permission")
-	}
+	require.False(t, cfg.PermissionEnabled)
 }
 
 func TestParsePermissionHooksFile(t *testing.T) {
-	if got := parsePermissionHooksFile(""); got != ".coding-agent/hooks.json" {
-		t.Fatalf("default = %q", got)
-	}
-	if got := parsePermissionHooksFile("/custom/hooks.json"); got != "/custom/hooks.json" {
-		t.Fatalf("override = %q", got)
-	}
+	require.Equal(t, ".coding-agent/hooks.json", parsePermissionHooksFile(""))
+	require.Equal(t, "/custom/hooks.json", parsePermissionHooksFile("/custom/hooks.json"))
 }
 
 func TestValidateSessionScope(t *testing.T) {
@@ -110,7 +87,5 @@ func TestValidateSessionScope(t *testing.T) {
 		AnthropicAPIKey: "key",
 		SessionScope:    "invalid",
 	}
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("expected validation error for invalid SESSION_SCOPE")
-	}
+	require.Error(t, cfg.Validate())
 }

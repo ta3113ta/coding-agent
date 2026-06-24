@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -14,6 +13,8 @@ import (
 	"coding-agent/session"
 	"coding-agent/tools"
 	"coding-agent/types"
+
+	"github.com/stretchr/testify/require"
 )
 
 type memStore struct {
@@ -127,12 +128,8 @@ func newTestAgentWithOptions(t *testing.T, provider *fakeStreamProvider, perm *p
 	t.Helper()
 	store := newMemStore()
 	ag, err := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", perm, compactor)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	if err := ag.InitNewSession(context.Background()); err != nil {
-		t.Fatalf("InitNewSession: %v", err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, ag.InitNewSession(context.Background()))
 	return ag, store
 }
 
@@ -147,15 +144,9 @@ func TestRun_StreamCallback(t *testing.T) {
 	answer, err := ag.Run(context.Background(), "hi", func(ev types.StreamEvent) {
 		got = append(got, ev.TextDelta)
 	})
-	if err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-	if answer != "hello" {
-		t.Fatalf("answer = %q, want hello", answer)
-	}
-	if len(got) != 2 || got[0] != "hel" || got[1] != "lo" {
-		t.Fatalf("stream deltas = %v, want [hel lo]", got)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "hello", answer)
+	require.Equal(t, []string{"hel", "lo"}, got)
 }
 
 func TestRun_NilStreamCallback(t *testing.T) {
@@ -166,28 +157,19 @@ func TestRun_NilStreamCallback(t *testing.T) {
 	ag, _ := newTestAgent(t, provider)
 
 	answer, err := ag.Run(context.Background(), "hi", nil)
-	if err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-	if answer != "done" {
-		t.Fatalf("answer = %q, want done", answer)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "done", answer)
 }
 
 func TestRun_AutoSave(t *testing.T) {
 	provider := &fakeStreamProvider{text: "ok"}
 	ag, store := newTestAgent(t, provider)
 
-	if _, err := ag.Run(context.Background(), "hi", nil); err != nil {
-		t.Fatalf("Run: %v", err)
-	}
+	_, err := ag.Run(context.Background(), "hi", nil)
+	require.NoError(t, err)
 	s, err := store.Get(context.Background(), ag.CurrentSessionID())
-	if err != nil {
-		t.Fatalf("Get: %v", err)
-	}
-	if len(s.Messages) != 2 {
-		t.Fatalf("saved messages = %d, want 2", len(s.Messages))
-	}
+	require.NoError(t, err)
+	require.Len(t, s.Messages, 2)
 }
 
 func TestResumeSession(t *testing.T) {
@@ -203,77 +185,44 @@ func TestResumeSession(t *testing.T) {
 		},
 	}
 
-	if err := ag.ResumeSession(context.Background(), "other"); err != nil {
-		t.Fatalf("ResumeSession: %v", err)
-	}
-	if ag.CurrentSessionID() != "other" {
-		t.Fatalf("session id = %q, want other", ag.CurrentSessionID())
-	}
-	if ag.CurrentSessionName() != "prev task" {
-		t.Fatalf("session name = %q, want prev task", ag.CurrentSessionName())
-	}
-	if len(ag.messages) != 2 {
-		t.Fatalf("messages = %d, want 2", len(ag.messages))
-	}
+	require.NoError(t, ag.ResumeSession(context.Background(), "other"))
+	require.Equal(t, "other", ag.CurrentSessionID())
+	require.Equal(t, "prev task", ag.CurrentSessionName())
+	require.Len(t, ag.messages, 2)
 }
 
 func TestResetSession(t *testing.T) {
 	provider := &fakeStreamProvider{text: "ok"}
 	ag, store := newTestAgent(t, provider)
 
-	if _, err := ag.Run(context.Background(), "hi", nil); err != nil {
-		t.Fatalf("Run: %v", err)
-	}
+	_, err := ag.Run(context.Background(), "hi", nil)
+	require.NoError(t, err)
 	oldID := ag.CurrentSessionID()
-	if err := ag.ResetSession(context.Background()); err != nil {
-		t.Fatalf("ResetSession: %v", err)
-	}
-	if ag.CurrentSessionID() == oldID {
-		t.Fatal("expected new session id after reset")
-	}
-	if len(ag.messages) != 0 {
-		t.Fatalf("messages = %d, want 0", len(ag.messages))
-	}
-	if _, ok := store.sessions[ag.CurrentSessionID()]; !ok {
-		t.Fatal("new session not in store")
-	}
+	require.NoError(t, ag.ResetSession(context.Background()))
+	require.NotEqual(t, oldID, ag.CurrentSessionID())
+	require.Empty(t, ag.messages)
+	require.Contains(t, store.sessions, ag.CurrentSessionID())
 }
 
 func TestSetSessionName(t *testing.T) {
 	provider := &fakeStreamProvider{text: "ok"}
 	ag, store := newTestAgent(t, provider)
 
-	if err := ag.SetSessionName(context.Background(), "my task"); err != nil {
-		t.Fatalf("SetSessionName: %v", err)
-	}
-	if ag.SessionLabel() != "my task ("+ag.CurrentSessionID()+")" {
-		t.Fatalf("label = %q", ag.SessionLabel())
-	}
+	require.NoError(t, ag.SetSessionName(context.Background(), "my task"))
+	require.Equal(t, "my task ("+ag.CurrentSessionID()+")", ag.SessionLabel())
 	s, err := store.Get(context.Background(), ag.CurrentSessionID())
-	if err != nil {
-		t.Fatalf("Get: %v", err)
-	}
-	if s.Name != "my task" {
-		t.Fatalf("stored name = %q", s.Name)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "my task", s.Name)
 }
 
 func TestInitNewSession(t *testing.T) {
 	provider := &fakeStreamProvider{text: "ok"}
 	store := newMemStore()
 	ag, err := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", nil, nil)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	if ag.CurrentSessionID() != "" {
-		t.Fatal("expected no session before InitNewSession")
-	}
-	if err := ag.InitNewSession(context.Background()); err != nil {
-		t.Fatalf("InitNewSession: %v", err)
-	}
-	if ag.CurrentSessionID() == "" {
-		t.Fatal("expected session id after InitNewSession")
-	}
+	require.NoError(t, err)
+	require.Empty(t, ag.CurrentSessionID())
+	require.NoError(t, ag.InitNewSession(context.Background()))
+	require.NotEmpty(t, ag.CurrentSessionID())
 }
 
 type fakeToolProvider struct {
@@ -311,28 +260,16 @@ func TestRun_PermissionDenied(t *testing.T) {
 
 	store := newMemStore()
 	ag, err := New(provider, reg, "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", perm, nil)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	if err := ag.InitNewSession(context.Background()); err != nil {
-		t.Fatalf("InitNewSession: %v", err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, ag.InitNewSession(context.Background()))
 
 	answer, err := ag.Run(context.Background(), "run echo", nil)
-	if err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-	if answer != "done after deny" {
-		t.Fatalf("answer = %q, want done after deny", answer)
-	}
-	if executed {
-		t.Fatal("tool should not execute when permission denied")
-	}
+	require.NoError(t, err)
+	require.Equal(t, "done after deny", answer)
+	require.False(t, executed)
 
 	s, err := store.Get(context.Background(), ag.CurrentSessionID())
-	if err != nil {
-		t.Fatalf("Get: %v", err)
-	}
+	require.NoError(t, err)
 	var toolMsg *types.Message
 	for i := range s.Messages {
 		if s.Messages[i].Role == "tool" {
@@ -340,12 +277,9 @@ func TestRun_PermissionDenied(t *testing.T) {
 			break
 		}
 	}
-	if toolMsg == nil {
-		t.Fatal("expected tool message in history")
-	}
-	if !toolMsg.IsError || !strings.Contains(toolMsg.Content, "blocked for test") {
-		t.Fatalf("tool message = %+v, want permission error", toolMsg)
-	}
+	require.NotNil(t, toolMsg)
+	require.True(t, toolMsg.IsError)
+	require.Contains(t, toolMsg.Content, "blocked for test")
 }
 
 type stubTool struct {
@@ -358,7 +292,8 @@ func (s *stubTool) Definition() types.ToolDefinition {
 	return types.ToolDefinition{Name: "run_bash"}
 }
 
-func (s *stubTool) Execute(input json.RawMessage) (string, error) {
+func (s *stubTool) Execute(ctx context.Context, input json.RawMessage) (string, error) {
+	_ = ctx
 	if s.onExecute != nil {
 		s.onExecute()
 	}
@@ -381,12 +316,9 @@ func TestRun_InvokesCompactorBeforeComplete(t *testing.T) {
 	comp := &recordingCompactor{}
 	ag, _ := newTestAgentWithOptions(t, provider, nil, comp)
 
-	if _, err := ag.Run(context.Background(), "hi", nil); err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-	if comp.calls < 1 {
-		t.Fatalf("compactor calls = %d, want at least 1", comp.calls)
-	}
+	_, err := ag.Run(context.Background(), "hi", nil)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, comp.calls, 1)
 }
 
 type forceCompactor struct{}
@@ -419,23 +351,86 @@ func TestCompactSession(t *testing.T) {
 		types.Message{Role: "assistant", Content: "reply"},
 		types.Message{Role: "user", Content: "recent"},
 	)
-	if err := ag.CompactSession(context.Background(), ""); err != nil {
-		t.Fatalf("CompactSession: %v", err)
-	}
-	if len(ag.messages) != 1 {
-		t.Fatalf("projected len = %d, want 1 after compact", len(ag.messages))
-	}
-	if len(ag.archive) != 3 {
-		t.Fatalf("archive len = %d, want 3 unchanged", len(ag.archive))
-	}
+	require.NoError(t, ag.CompactSession(context.Background(), ""))
+	require.Len(t, ag.messages, 1)
+	require.Len(t, ag.archive, 3)
 	s, err := store.Get(context.Background(), ag.CurrentSessionID())
-	if err != nil {
-		t.Fatalf("Get: %v", err)
-	}
-	if len(s.Messages) != 3 {
-		t.Fatalf("persisted archive = %d, want 3", len(s.Messages))
-	}
-	if len(s.Compactions) != 1 {
-		t.Fatalf("persisted compactions = %d, want 1", len(s.Compactions))
-	}
+	require.NoError(t, err)
+	require.Len(t, s.Messages, 3)
+	require.Len(t, s.Compactions, 1)
+}
+
+type loopingProvider struct {
+	calls int
+}
+
+func (p *loopingProvider) Complete(ctx context.Context, req types.CompleteRequest) (*types.CompleteResponse, error) {
+	_ = ctx
+	p.calls++
+	return &types.CompleteResponse{
+		Text: "thinking",
+		ToolCalls: []types.ToolCall{{
+			ID:    "tc_1",
+			Name:  "read_file",
+			Input: json.RawMessage(`{"path":"x"}`),
+		}},
+	}, nil
+}
+
+func TestRunSubtask_MaxTurns(t *testing.T) {
+	provider := &loopingProvider{}
+	reg := tools.NewRegistry(&stubReadTool{})
+	ag, _ := newTestAgentWithRegistry(t, provider, reg)
+
+	text, err := ag.RunSubtask(context.Background(), "explore", 2)
+	require.NoError(t, err)
+	require.Contains(t, text, "max turns reached")
+	require.Equal(t, 2, provider.calls)
+}
+
+func TestRunSubtask_IsolatedFromParentArchive(t *testing.T) {
+	provider := &fakeStreamProvider{text: "sub done"}
+	ag, store := newTestAgent(t, provider)
+
+	ag.appendArchive(types.Message{Role: "user", Content: "parent only"})
+	parentID := ag.CurrentSessionID()
+	parentLen := len(ag.archive)
+
+	childStore := newMemStore()
+	child, err := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, childStore, "anthropic", nil, nil)
+	require.NoError(t, err)
+	require.NoError(t, child.InitNewSession(context.Background()))
+	_, err = child.RunSubtask(context.Background(), "child task", 0)
+	require.NoError(t, err)
+
+	require.Equal(t, parentLen, len(ag.archive))
+	s, err := store.Get(context.Background(), parentID)
+	require.NoError(t, err)
+	require.Empty(t, s.Messages)
+	childS, err := childStore.Get(context.Background(), child.CurrentSessionID())
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(childS.Messages), 2)
+}
+
+type stubReadTool struct{}
+
+func (stubReadTool) Name() string { return "read_file" }
+
+func (stubReadTool) Definition() types.ToolDefinition {
+	return types.ToolDefinition{Name: "read_file"}
+}
+
+func (stubReadTool) Execute(ctx context.Context, input json.RawMessage) (string, error) {
+	_ = ctx
+	_ = input
+	return "file contents", nil
+}
+
+func newTestAgentWithRegistry(t *testing.T, provider *loopingProvider, reg *tools.Registry) (*Agent, *memStore) {
+	t.Helper()
+	store := newMemStore()
+	ag, err := New(provider, reg, "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", nil, nil)
+	require.NoError(t, err)
+	require.NoError(t, ag.InitNewSession(context.Background()))
+	return ag, store
 }

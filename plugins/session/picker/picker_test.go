@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"coding-agent/session"
+
+	"github.com/stretchr/testify/require"
 )
 
 type fakeStore struct {
@@ -33,15 +35,9 @@ func TestSelectEmpty(t *testing.T) {
 	store := &fakeStore{}
 	var out strings.Builder
 	id, err := Select(context.Background(), store, strings.NewReader(""), &out)
-	if err != nil {
-		t.Fatalf("Select: %v", err)
-	}
-	if id != "" {
-		t.Fatalf("id = %q, want empty", id)
-	}
-	if !strings.Contains(out.String(), "no previous sessions") {
-		t.Fatalf("output = %q", out.String())
-	}
+	require.NoError(t, err)
+	require.Empty(t, id)
+	require.Contains(t, out.String(), "no previous sessions")
 }
 
 func TestSelectValid(t *testing.T) {
@@ -54,12 +50,8 @@ func TestSelectValid(t *testing.T) {
 	}
 	var out strings.Builder
 	id, err := Select(context.Background(), store, strings.NewReader("2\n"), &out)
-	if err != nil {
-		t.Fatalf("Select: %v", err)
-	}
-	if id != "session-a" {
-		t.Fatalf("id = %q, want session-a", id)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "session-a", id)
 }
 
 func TestSelectInvalid(t *testing.T) {
@@ -68,9 +60,7 @@ func TestSelectInvalid(t *testing.T) {
 		metas: []session.Meta{{ID: "only", UpdatedAt: now}},
 	}
 	_, err := Select(context.Background(), store, strings.NewReader("9\n"), &strings.Builder{})
-	if err == nil {
-		t.Fatal("expected error for invalid selection")
-	}
+	require.Error(t, err)
 }
 
 func TestSelectCancel(t *testing.T) {
@@ -79,7 +69,5 @@ func TestSelectCancel(t *testing.T) {
 		metas: []session.Meta{{ID: "only", UpdatedAt: now}},
 	}
 	_, err := Select(context.Background(), store, strings.NewReader("q\n"), &strings.Builder{})
-	if err == nil {
-		t.Fatal("expected cancel error")
-	}
+	require.Error(t, err)
 }

@@ -9,6 +9,7 @@ import (
 	"coding-agent/permission"
 	"coding-agent/session"
 	"coding-agent/skills"
+	"coding-agent/spawn"
 	"coding-agent/tools"
 	"coding-agent/types"
 )
@@ -23,6 +24,7 @@ type App struct {
 	SessionStore session.Store
 	Permission   *permission.Chain
 	Compactor    compaction.Compactor
+	Spawner      spawn.Runner
 }
 
 type Plugin interface {

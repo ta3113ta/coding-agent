@@ -28,7 +28,7 @@ func (RunBash) Definition() types.ToolDefinition {
 	}
 }
 
-func (RunBash) Execute(input json.RawMessage) (string, error) {
+func (RunBash) Execute(ctx context.Context, input json.RawMessage) (string, error) {
 	var args struct {
 		Command string `json:"command"`
 	}
@@ -36,7 +36,7 @@ func (RunBash) Execute(input json.RawMessage) (string, error) {
 		return "", err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "bash", "-c", args.Command)

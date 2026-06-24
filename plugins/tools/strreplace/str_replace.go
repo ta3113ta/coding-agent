@@ -1,6 +1,7 @@
 package strreplace
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -43,7 +44,8 @@ func (StrReplace) Definition() types.ToolDefinition {
 	}
 }
 
-func (StrReplace) Execute(input json.RawMessage) (string, error) {
+func (StrReplace) Execute(ctx context.Context, input json.RawMessage) (string, error) {
+	_ = ctx
 	var args struct {
 		Path        string `json:"path"`
 		OldString   string `json:"old_string"`

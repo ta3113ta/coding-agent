@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -15,8 +16,7 @@ type Tool interface {
 	// Definition คือ schema ที่ส่งให้ LLM รู้ว่า tool นี้ทำอะไร รับ param อะไร
 	Definition() types.ToolDefinition
 	// Execute รับ raw JSON input จาก LLM แล้วคืนผลลัพธ์เป็น string
-	// คืน error เพื่อให้ loop จัดการ (ส่ง error กลับให้ LLM แก้เอง)
-	Execute(input json.RawMessage) (string, error)
+	Execute(ctx context.Context, input json.RawMessage) (string, error)
 }
 
 // Registry เก็บ tool ทั้งหมด ใช้ dispatch ตามชื่อ
@@ -36,6 +36,14 @@ func (r *Registry) Register(t Tool) {
 	r.tools[t.Name()] = t
 }
 
+func (r *Registry) Names() []string {
+	out := make([]string, 0, len(r.tools))
+	for name := range r.tools {
+		out = append(out, name)
+	}
+	return out
+}
+
 // Definitions คืน schema ทั้งหมดในรูปแบบที่ provider ใช้ได้
 func (r *Registry) Definitions() []types.ToolDefinition {
 	out := make([]types.ToolDefinition, 0, len(r.tools))
@@ -46,10 +54,10 @@ func (r *Registry) Definitions() []types.ToolDefinition {
 }
 
 // Dispatch หา tool ตามชื่อแล้วเรียก Execute
-func (r *Registry) Dispatch(name string, input json.RawMessage) (string, error) {
+func (r *Registry) Dispatch(ctx context.Context, name string, input json.RawMessage) (string, error) {
 	t, ok := r.tools[name]
 	if !ok {
 		return "", fmt.Errorf("unknown tool: %s", name)
 	}
-	return t.Execute(input)
+	return t.Execute(ctx, input)
 }

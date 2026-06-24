@@ -7,17 +7,15 @@ import (
 	"testing"
 
 	"coding-agent/permission"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestHook_AutoAllowReadOnly(t *testing.T) {
 	h := NewHook(strings.NewReader(""), &strings.Builder{})
 	res, err := h.BeforeToolUse(context.Background(), permission.ToolUseRequest{ToolName: "read_file"})
-	if err != nil {
-		t.Fatalf("BeforeToolUse: %v", err)
-	}
-	if res.Decision != permission.Allow {
-		t.Fatalf("decision = %v, want Allow", res.Decision)
-	}
+	require.NoError(t, err)
+	require.Equal(t, permission.Allow, res.Decision)
 }
 
 func TestHook_PromptApprove(t *testing.T) {
@@ -26,12 +24,8 @@ func TestHook_PromptApprove(t *testing.T) {
 		ToolName: "run_bash",
 		Input:    json.RawMessage(`{"command":"echo hi"}`),
 	})
-	if err != nil {
-		t.Fatalf("BeforeToolUse: %v", err)
-	}
-	if res.Decision != permission.Allow {
-		t.Fatalf("decision = %v, want Allow", res.Decision)
-	}
+	require.NoError(t, err)
+	require.Equal(t, permission.Allow, res.Decision)
 }
 
 func TestHook_PromptDeny(t *testing.T) {
@@ -40,12 +34,8 @@ func TestHook_PromptDeny(t *testing.T) {
 		ToolName: "write_file",
 		Input:    json.RawMessage(`{"path":"x.txt","content":"hi"}`),
 	})
-	if err != nil {
-		t.Fatalf("BeforeToolUse: %v", err)
-	}
-	if res.Decision != permission.Deny {
-		t.Fatalf("decision = %v, want Deny", res.Decision)
-	}
+	require.NoError(t, err)
+	require.Equal(t, permission.Deny, res.Decision)
 }
 
 func TestHook_AskHintShown(t *testing.T) {
@@ -56,10 +46,6 @@ func TestHook_AskHintShown(t *testing.T) {
 		Input:    json.RawMessage(`{"command":"curl example.com"}`),
 		AskHint:  "Network command detected",
 	})
-	if err != nil {
-		t.Fatalf("BeforeToolUse: %v", err)
-	}
-	if !strings.Contains(out.String(), "Network command detected") {
-		t.Fatalf("output = %q, want ask hint", out.String())
-	}
+	require.NoError(t, err)
+	require.Contains(t, out.String(), "Network command detected")
 }

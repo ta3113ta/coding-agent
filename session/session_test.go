@@ -3,12 +3,12 @@ package session
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestLatestEmpty(t *testing.T) {
-	if Latest(nil) != nil {
-		t.Fatal("expected nil for empty list")
-	}
+	require.Nil(t, Latest(nil))
 }
 
 func TestLatestReturnsMostRecent(t *testing.T) {
@@ -19,9 +19,8 @@ func TestLatestReturnsMostRecent(t *testing.T) {
 		{ID: "mid", UpdatedAt: now.Add(-1 * time.Hour)},
 	}
 	got := Latest(metas)
-	if got == nil || got.ID != "new" {
-		t.Fatalf("Latest() = %+v, want new", got)
-	}
+	require.NotNil(t, got)
+	require.Equal(t, "new", got.ID)
 }
 
 func TestSortByUpdatedDesc(t *testing.T) {
@@ -31,7 +30,6 @@ func TestSortByUpdatedDesc(t *testing.T) {
 		{ID: "b", UpdatedAt: now},
 	}
 	sorted := SortByUpdatedDesc(metas)
-	if sorted[0].ID != "b" || sorted[1].ID != "a" {
-		t.Fatalf("sort order = %v, want [b a]", []string{sorted[0].ID, sorted[1].ID})
-	}
+	require.Equal(t, "b", sorted[0].ID)
+	require.Equal(t, "a", sorted[1].ID)
 }

@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"coding-agent/types"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestStoreRoundTrip(t *testing.T) {
@@ -12,36 +14,24 @@ func TestStoreRoundTrip(t *testing.T) {
 	ctx := context.Background()
 
 	s, err := store.Create(ctx, "anthropic", "model")
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
+	require.NoError(t, err)
 	s.Messages = []types.Message{{Role: "user", Content: "hi"}}
 	s.Name = "test"
-	if err := store.Save(ctx, s); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
+	require.NoError(t, store.Save(ctx, s))
 
 	got, err := store.Get(ctx, s.ID)
-	if err != nil {
-		t.Fatalf("Get: %v", err)
-	}
-	if got.Name != "test" || len(got.Messages) != 1 {
-		t.Fatalf("got = %+v", got)
-	}
+	require.NoError(t, err)
+	require.Equal(t, "test", got.Name)
+	require.Len(t, got.Messages, 1)
 
 	metas, err := store.List(ctx)
-	if err != nil {
-		t.Fatalf("List: %v", err)
-	}
-	if len(metas) != 1 || metas[0].Name != "test" {
-		t.Fatalf("metas = %+v", metas)
-	}
+	require.NoError(t, err)
+	require.Len(t, metas, 1)
+	require.Equal(t, "test", metas[0].Name)
 }
 
 func TestStoreGetMissing(t *testing.T) {
 	store := New()
 	_, err := store.Get(context.Background(), "missing")
-	if err == nil {
-		t.Fatal("expected error")
-	}
+	require.Error(t, err)
 }

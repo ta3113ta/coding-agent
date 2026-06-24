@@ -8,6 +8,7 @@ import (
 	"coding-agent/config"
 	"coding-agent/llm"
 	"coding-agent/permission"
+	"coding-agent/spawn"
 	"coding-agent/tools"
 )
 
@@ -81,6 +82,13 @@ func RegisterCompactor(app *App, c compaction.Compactor) {
 		return
 	}
 	app.Compactor = c
+}
+
+func RegisterSpawner(app *App, s spawn.Runner) {
+	if s == nil {
+		return
+	}
+	app.Spawner = s
 }
 
 func AppendPrompt(app *App, prompt string) {

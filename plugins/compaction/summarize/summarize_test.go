@@ -8,6 +8,8 @@ import (
 	"coding-agent/compaction"
 	"coding-agent/config"
 	"coding-agent/types"
+
+	"github.com/stretchr/testify/require"
 )
 
 type fakeProvider struct {
@@ -40,15 +42,9 @@ func TestMaybeCompact_UnderBudgetNoOp(t *testing.T) {
 		Archive: msgs,
 		Model:   "test",
 	})
-	if err != nil {
-		t.Fatalf("MaybeCompact: %v", err)
-	}
-	if res.Compacted {
-		t.Fatal("expected no compaction under budget")
-	}
-	if p.lastReq != nil {
-		t.Fatal("provider should not be called under budget")
-	}
+	require.NoError(t, err)
+	require.False(t, res.Compacted)
+	require.Nil(t, p.lastReq)
 }
 
 func TestMaybeCompact_ForceSummarizes(t *testing.T) {
@@ -73,36 +69,16 @@ func TestMaybeCompact_ForceSummarizes(t *testing.T) {
 		Model:        "test",
 		Force:        true,
 	})
-	if err != nil {
-		t.Fatalf("MaybeCompact: %v", err)
-	}
-	if !res.Compacted {
-		t.Fatal("expected compaction when forced")
-	}
-	if p.lastReq == nil {
-		t.Fatal("provider should be called")
-	}
-	if !strings.Contains(p.lastReq.Messages[0].Content, "build fizzbuzz") {
-		t.Fatalf("prefix not in summarize request: %q", p.lastReq.Messages[0].Content)
-	}
-	if !strings.Contains(p.lastReq.Messages[0].Content, "[User]: build fizzbuzz") {
-		t.Fatalf("expected serialized format: %q", p.lastReq.Messages[0].Content)
-	}
-	if len(res.Projected) != 2 {
-		t.Fatalf("projected len = %d, want 2 (compacted + recent)", len(res.Projected))
-	}
-	if !strings.HasPrefix(res.Projected[0].Content, compaction.CompactedPrefix) {
-		t.Fatalf("first message = %q, want compacted prefix", res.Projected[0].Content)
-	}
-	if res.Projected[1].Content != "recent" {
-		t.Fatalf("kept message = %q, want recent", res.Projected[1].Content)
-	}
-	if len(res.Archive) != 3 {
-		t.Fatalf("archive len = %d, want 3 unchanged", len(res.Archive))
-	}
-	if len(res.Compactions) != 1 {
-		t.Fatalf("compactions = %d, want 1", len(res.Compactions))
-	}
+	require.NoError(t, err)
+	require.True(t, res.Compacted)
+	require.NotNil(t, p.lastReq)
+	require.Contains(t, p.lastReq.Messages[0].Content, "build fizzbuzz")
+	require.Contains(t, p.lastReq.Messages[0].Content, "[User]: build fizzbuzz")
+	require.Len(t, res.Projected, 2)
+	require.True(t, strings.HasPrefix(res.Projected[0].Content, compaction.CompactedPrefix))
+	require.Equal(t, "recent", res.Projected[1].Content)
+	require.Len(t, res.Archive, 3)
+	require.Len(t, res.Compactions, 1)
 }
 
 func TestMaybeCompact_OverBudget(t *testing.T) {
@@ -125,12 +101,8 @@ func TestMaybeCompact_OverBudget(t *testing.T) {
 		Archive: msgs,
 		Model:   "test",
 	})
-	if err != nil {
-		t.Fatalf("MaybeCompact: %v", err)
-	}
-	if !res.Compacted {
-		t.Fatal("expected compaction over budget")
-	}
+	require.NoError(t, err)
+	require.True(t, res.Compacted)
 }
 
 func TestMaybeCompact_CustomInstructions(t *testing.T) {
@@ -152,10 +124,6 @@ func TestMaybeCompact_CustomInstructions(t *testing.T) {
 		Force:              true,
 		CustomInstructions: "focus on API changes",
 	})
-	if err != nil {
-		t.Fatalf("MaybeCompact: %v", err)
-	}
-	if !strings.Contains(p.lastReq.Messages[0].Content, "focus on API changes") {
-		t.Fatalf("custom instructions missing: %q", p.lastReq.Messages[0].Content)
-	}
+	require.NoError(t, err)
+	require.Contains(t, p.lastReq.Messages[0].Content, "focus on API changes")
 }
