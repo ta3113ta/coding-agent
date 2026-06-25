@@ -65,10 +65,10 @@ func (r *Registry) Len() int {
 
 const usageInstructions = `## Available Skills
 
-เมื่องานของผู้ใช้ตรงกับ description ของ skill ใด:
-1. อ่าน SKILL.md ด้วย read_file ก่อนทำงาน
-2. ทำตาม instructions ใน skill ทันที
-3. ถ้า skill มี disable-model-invocation อย่าโหลดเอง ยกเว้นผู้ใช้ระบุชื่อ skill ชัดเจน`
+When the user's task matches a skill description:
+1. Read SKILL.md with read_file before working.
+2. Follow the instructions in the skill immediately.
+3. If a skill has disable-model-invocation, do not load it unless the user explicitly names the skill.`
 
 func (r *Registry) IndexPrompt() string {
 	if r == nil || len(r.ordered) == 0 {

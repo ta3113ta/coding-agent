@@ -14,9 +14,9 @@ var profiles = map[Type]Profile{
 	TypeExplore: {
 		Type: TypeExplore,
 		SystemSuffix: "You are a read-only codebase exploration sub-agent. " +
-			"Use read_file and list_dir to investigate. Do not modify files. " +
+			"Use grep, glob, read_file, and list_dir to investigate. Do not modify files. " +
 			"Return findings concisely.",
-		Tools: []string{"read_file", "list_dir"},
+		Tools: []string{"read_file", "list_dir", "grep", "glob"},
 	},
 	TypeShell: {
 		Type: TypeShell,

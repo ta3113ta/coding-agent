@@ -1,34 +1,34 @@
-# ADR-0002: Load Skill แบบ two-phase discovery
+# ADR-0002: Load Skill with two-phase discovery
 
 **Status:** Accepted  
 **Date:** 2026-06-14
 
 ## Context
 
-Coding agent มี system prompt แบบ static ผ่าน prompt plugin (`coding`) ที่ inject ตอน bootstrap เท่านั้น — ไม่มีวิธีเพิ่ม procedural knowledge ตาม project หรือ user workflow
+The coding agent had a static system prompt via the `coding` prompt plugin injected only at bootstrap — no way to add procedural knowledge per project or user workflow.
 
-Cursor Agent Skills แก้ปัญหานี้ด้วย `SKILL.md` (YAML frontmatter + markdown body) ที่ agent โหลดเมื่อ task relevant แทนการใส่ instructions ทั้งหมดใน system prompt ตลอด session
+Cursor Agent Skills solve this with `SKILL.md` (YAML frontmatter + markdown body) that the agent loads when a task is relevant, instead of putting all instructions in the system prompt for the entire session.
 
-Phase 2 ต้องการ skill loading ที่:
-- compatible กับ Cursor SKILL.md format
-- ประหยัด token (index เท่านั้นใน system prompt)
-- ไม่แก้ agent loop
+Phase 2 needed skill loading that:
+- is compatible with the Cursor SKILL.md format
+- saves tokens (index only in the system prompt)
+- does not change the agent loop
 
 ## Decision
 
-ใช้ **two-phase lazy loading** คู่กับ **`read_file` tool ที่มีอยู่**:
+Use **two-phase lazy loading** with the **existing `read_file` tool**:
 
-1. **Bootstrap** — discover `SKILL.md` จาก 3 แหล่ง แล้ว merge ด้วย priority
-2. **Index** — inject เฉพาะ `name` + `description` + `path` เข้า system prompt
-3. **Full load** — agent อ่าน `SKILL.md` ด้วย `read_file` เมื่อ task ตรงกับ description
+1. **Bootstrap** — discover `SKILL.md` from 3 sources, then merge by priority
+2. **Index** — inject only `name` + `description` + `path` into the system prompt
+3. **Full load** — agent reads `SKILL.md` with `read_file` when the task matches the description
 
 ### Discovery paths (priority: project > personal > bundled)
 
 | Source | Path |
 |--------|------|
 | Project | `<workspace>/.cursor/skills/*/SKILL.md` |
-| Personal | `~/.cursor/skills/*/SKILL.md` (ปิดได้ด้วย `SKILLS_ENABLE_PERSONAL=false`) |
-| Bundled | `plugins/skills/builtin/*/SKILL.md` (embed + extract ไป temp dir สำหรับ `read_file`) |
+| Personal | `~/.cursor/skills/*/SKILL.md` (disable with `SKILLS_ENABLE_PERSONAL=false`) |
+| Bundled | `plugins/skills/builtin/*/SKILL.md` (embed + extract to temp dir for `read_file`) |
 
 Implementation:
 - Core contract: [`skills/`](../../skills/)
@@ -36,52 +36,52 @@ Implementation:
 
 ## Alternatives Considered
 
-| แนวทาง | Token efficiency | เหตุผลที่ไม่เลือก v1 |
-|--------|------------------|----------------------|
-| Two-phase index + `read_file` | สูงสุด | **เลือกใช้** — ไม่แก้ agent loop |
-| Eager load ทุก skill body เข้า prompt | ต่ำ | token cost สูงเมื่อ skill เยอะ |
-| `load_skill` tool แยก | ปานกลาง | ต้อง inject agent state เข้า tool; `read_file` พอแล้ว |
-| Compile-time prompt plugin เท่านั้น | สูง | ไม่ dynamic ตาม project/user |
-| REPL `/skill-name` explicit invoke | ดีสำหรับ slash commands | defer v2 — ยังพึ่ง model routing จาก index |
-| Scan `~/.cursor/skills-cursor/` | — | Cursor internal — ไม่ใช้ |
+| Approach | Token efficiency | Reason not chosen for v1 |
+|--------|------------------|--------------------------|
+| Two-phase index + `read_file` | Highest | **Chosen** — no agent loop changes |
+| Eager load all skill bodies into prompt | Low | High token cost with many skills |
+| Separate `load_skill` tool | Medium | Requires injecting agent state into tool; `read_file` is enough |
+| Compile-time prompt plugin only | High | Not dynamic per project/user |
+| REPL `/skill-name` explicit invoke | Good for slash commands | Deferred v2 — still relies on model routing from index |
+| Scan `~/.cursor/skills-cursor/` | — | Cursor internal — not used |
 
 ## Consequences
 
-**ข้อดี**
+**Pros**
 
-- ไม่แก้ [`agent/agent.go`](../../agent/agent.go) — `systemPrompt` static ต่อ session แต่รวม skill index ตอน bootstrap
-- Compatible กับ Cursor SKILL.md format (`name`, `description`, `disable-model-invocation`)
-- Token-efficient — descriptions เท่านั้นใน prompt ตลอด session
-- Bundled skills ผ่าน `embed.FS` — ship กับ binary ได้
+- No changes to [`agent/agent.go`](../../agent/agent.go) — `systemPrompt` is static per session but includes the skill index at bootstrap
+- Compatible with Cursor SKILL.md format (`name`, `description`, `disable-model-invocation`)
+- Token-efficient — descriptions only in the prompt for the whole session
+- Bundled skills via `embed.FS` — ship with the binary
 
-**ข้อเสีย / trade-offs**
+**Cons / trade-offs**
 
-- พึ่ง model ตัดสินใจว่า skill ไหน relevant จาก description
-- Bundled skills extract ไป temp dir — path เปลี่ยนทุก session
-- ไม่รองรับ `environments` / `metadata.surfaces` filtering ใน v1
-- ไม่มี explicit `/skill-name` ใน REPL v1
+- Relies on the model deciding which skill is relevant from the description
+- Bundled skills extract to a temp dir — path changes every session
+- No `environments` / `metadata.surfaces` filtering in v1
+- No explicit `/skill-name` in REPL v1
 
 ## Skill Index Format
 
 ```
 ## Available Skills
 
-เมื่องานของผู้ใช้ตรงกับ description ของ skill ใด:
-1. อ่าน SKILL.md ด้วย read_file ก่อนทำงาน
-2. ทำตาม instructions ใน skill ทันที
-3. ถ้า skill มี disable-model-invocation อย่าโหลดเอง ยกเว้นผู้ใช้ระบุชื่อ skill ชัดเจน
+When the user's task matches a skill description:
+1. Read SKILL.md with read_file before working.
+2. Follow the instructions in the skill immediately.
+3. If a skill has disable-model-invocation, do not load it unless the user explicitly names the skill.
 
 <available_skills>
-- commit-message (/path/to/SKILL.md): สร้าง git commit message...
+- commit-message (/path/to/SKILL.md): generate git commit message...
 </available_skills>
 ```
 
-## v2 (defer)
+## v2 (deferred)
 
 - REPL `/skill-name` explicit invocation
 - `environments` / `metadata.surfaces` filtering
-- `embed.FS` path แทน temp dir extraction (ถ้า `read_file` รองรับ virtual FS)
-- Skill hot-reload ระหว่าง session
+- `embed.FS` path instead of temp dir extraction (if `read_file` supports virtual FS)
+- Skill hot-reload during session
 
 ## References
 

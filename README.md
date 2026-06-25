@@ -30,7 +30,7 @@ coding-agent/
 │   └── ...                          # skill discovery contract (parse, discover, registry)
 └── plugins/
     ├── builtin/builtin.go           # default plugin registry
-    ├── tools/                       # readfile, writefile, strreplace, listdir, runbash
+    ├── tools/                       # readfile, writefile, strreplace, listdir, grep, glob, runbash
     ├── providers/                   # anthropic, openrouter
     ├── skills/builtin/              # bundled SKILL.md files
     ├── prompt/coding/               # system prompt
@@ -42,6 +42,7 @@ coding-agent/
 
 ```bash
 cp .env-example .env   # then add your API key
+brew install ripgrep   # required for grep/glob tools (rg)
 go mod tidy
 go run .
 ```
@@ -138,13 +139,13 @@ loop:
 - Permission hook plugin — [ADR-0006](docs/adr/0006-permission-hooks.md)
 - Context compaction — [ADR-0007](docs/adr/0007-context-compaction.md)
 - Sub-agents / task spawning — [ADR-0008](docs/adr/0008-sub-agent-task-spawning.md)
+- Grep + Glob internal search — [ADR-0009](docs/adr/0009-grep-glob-internal-search.md)
 
 ## Road map
 
 - **External search: web fetch + web search**
 - **TODO / plan tracking**
 - **Thinking level / reasoning tokens**
-- **internal search: grep*
 - **Parallel tool execution**
 - **More tools: see ./tools.md**
 - **Custom model, provider management**, eg. auth.json, /login, /logout

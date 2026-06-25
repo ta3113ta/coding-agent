@@ -20,11 +20,11 @@ func (ReadFile) Name() string { return "read_file" }
 func (ReadFile) Definition() types.ToolDefinition {
 	return types.ToolDefinition{
 		Name:        "read_file",
-		Description: "อ่านเนื้อหาไฟล์ตาม path ที่ระบุ คืนผลพร้อมเลขบรรทัด ใช้ offset/limit เมื่อไฟล์ใหญ่เพื่ออ่านทีละช่วง",
+		Description: "Read file contents at the given path. Returns line numbers. Use offset/limit for large files to read in chunks.",
 		Properties: map[string]any{
-			"path":   map[string]any{"type": "string", "description": "path ของไฟล์ที่จะอ่าน"},
-			"offset": map[string]any{"type": "integer", "description": "เริ่มอ่านจากบรรทัดที่ (1-indexed) ไม่ใส่ = เริ่มจากต้น"},
-			"limit":  map[string]any{"type": "integer", "description": "อ่านกี่บรรทัด ไม่ใส่ = อ่านถึงท้าย (cap ที่ 2000)"},
+			"path":   map[string]any{"type": "string", "description": "path of the file to read"},
+			"offset": map[string]any{"type": "integer", "description": "start reading at this line (1-indexed); omit to start from the beginning"},
+			"limit":  map[string]any{"type": "integer", "description": "number of lines to read; omit to read to end (capped at 2000)"},
 		},
 		Required: []string{"path"},
 	}
@@ -67,7 +67,7 @@ func (ReadFile) Execute(ctx context.Context, input json.RawMessage) (string, err
 			continue
 		}
 		if printed >= args.Limit {
-			b.WriteString(fmt.Sprintf("... (ตัดที่บรรทัด %d ใช้ offset/limit อ่านต่อ)\n", lineNo-1))
+			b.WriteString(fmt.Sprintf("... (truncated at line %d; use offset/limit to read more)\n", lineNo-1))
 			break
 		}
 		b.WriteString(fmt.Sprintf("%6d\t%s\n", lineNo, sc.Text()))
@@ -77,7 +77,7 @@ func (ReadFile) Execute(ctx context.Context, input json.RawMessage) (string, err
 		return "", err
 	}
 	if printed == 0 {
-		return "(ไฟล์ว่าง หรือ offset เกินจำนวนบรรทัด)", nil
+		return "(empty file or offset beyond line count)", nil
 	}
 	return b.String(), nil
 }

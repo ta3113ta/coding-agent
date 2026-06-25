@@ -23,7 +23,7 @@ type Meta struct {
 	DisableModelInvocation bool
 }
 
-// Parse แยก YAML frontmatter และ body จากเนื้อหา SKILL.md
+// Parse splits YAML frontmatter and body from SKILL.md content.
 func Parse(content []byte) (Meta, string, error) {
 	text := string(content)
 	text = strings.TrimPrefix(text, "\ufeff")
@@ -86,7 +86,7 @@ func validateMeta(meta Meta) error {
 	return nil
 }
 
-// ParseFile อ่านและ parse SKILL.md จาก path ที่กำหนด
+// ParseFile reads and parses SKILL.md from the given path.
 func ParseFile(path string, data []byte, source Source, fallbackName string) (Skill, error) {
 	meta, _, err := Parse(data)
 	if err != nil {

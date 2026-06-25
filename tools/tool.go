@@ -8,18 +8,18 @@ import (
 	"coding-agent/types"
 )
 
-// Tool คือ interface ที่ทุก tool ต้อง implement
-// แยก "นิยาม" (schema ที่ส่งให้ LLM) ออกจาก "การทำงานจริง" (Execute)
+// Tool is the interface every tool must implement.
+// It separates the "definition" (schema sent to the LLM) from the actual work (Execute).
 type Tool interface {
-	// Name ที่ LLM ใช้เรียก
+	// Name is what the LLM uses to invoke the tool.
 	Name() string
-	// Definition คือ schema ที่ส่งให้ LLM รู้ว่า tool นี้ทำอะไร รับ param อะไร
+	// Definition is the schema sent to the LLM describing what the tool does and which params it accepts.
 	Definition() types.ToolDefinition
-	// Execute รับ raw JSON input จาก LLM แล้วคืนผลลัพธ์เป็น string
+	// Execute receives raw JSON input from the LLM and returns a string result.
 	Execute(ctx context.Context, input json.RawMessage) (string, error)
 }
 
-// Registry เก็บ tool ทั้งหมด ใช้ dispatch ตามชื่อ
+// Registry holds all tools and dispatches by name.
 type Registry struct {
 	tools map[string]Tool
 }
@@ -44,7 +44,7 @@ func (r *Registry) Names() []string {
 	return out
 }
 
-// Definitions คืน schema ทั้งหมดในรูปแบบที่ provider ใช้ได้
+// Definitions returns all schemas in a format the provider can use.
 func (r *Registry) Definitions() []types.ToolDefinition {
 	out := make([]types.ToolDefinition, 0, len(r.tools))
 	for _, t := range r.tools {
@@ -53,7 +53,7 @@ func (r *Registry) Definitions() []types.ToolDefinition {
 	return out
 }
 
-// Dispatch หา tool ตามชื่อแล้วเรียก Execute
+// Dispatch finds a tool by name and calls Execute.
 func (r *Registry) Dispatch(ctx context.Context, name string, input json.RawMessage) (string, error) {
 	t, ok := r.tools[name]
 	if !ok {

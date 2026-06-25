@@ -16,6 +16,8 @@ import (
 var autoAllowTools = map[string]bool{
 	"read_file": true,
 	"list_dir":  true,
+	"grep":      true,
+	"glob":      true,
 }
 
 var gatedTools = map[string]bool{

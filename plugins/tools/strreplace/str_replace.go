@@ -19,25 +19,25 @@ func (StrReplace) Name() string { return "str_replace" }
 func (StrReplace) Definition() types.ToolDefinition {
 	return types.ToolDefinition{
 		Name: "str_replace",
-		Description: "แทนที่ข้อความในไฟล์แบบ exact match อ่านไฟล์ด้วย read_file ก่อนเสมอ " +
-			"old_string ต้องตรงกับไฟล์ทุกตัวอักษร (whitespace, indentation) " +
-			"ใส่บริบทรอบๆ 2-5 บรรทัดให้ unique หรือตั้ง replace_all=true สำหรับไฟล์ใหม่ใช้ write_file",
+		Description: "Replace text in a file with an exact match. Always read_file first. " +
+			"old_string must match the file character-for-character (whitespace, indentation). " +
+			"Include 2-5 lines of surrounding context to make it unique, or set replace_all=true. Use write_file for new files.",
 		Properties: map[string]any{
 			"path": map[string]any{
 				"type":        "string",
-				"description": "path ของไฟล์ที่จะแก้",
+				"description": "path of the file to edit",
 			},
 			"old_string": map[string]any{
 				"type":        "string",
-				"description": "ข้อความเดิมที่จะแทนที่ ต้องปรากฏครั้งเดียว ยกเว้น replace_all=true",
+				"description": "text to replace; must appear once unless replace_all=true",
 			},
 			"new_string": map[string]any{
 				"type":        "string",
-				"description": "ข้อความใหม่ ใส่ค่าว่างเพื่อลบ old_string",
+				"description": "replacement text; use empty string to delete old_string",
 			},
 			"replace_all": map[string]any{
 				"type":        "boolean",
-				"description": "ถ้า true แทนที่ทุกจุดที่พบ old_string (default false)",
+				"description": "if true, replace every occurrence of old_string (default false)",
 			},
 		},
 		Required: []string{"path", "old_string", "new_string"},

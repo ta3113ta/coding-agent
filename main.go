@@ -108,7 +108,7 @@ func main() {
 		}
 	}
 
-	fmt.Printf("Coding Agent [%s / %s] (พิมพ์ 'exit' เพื่อออก)\n", cfg.Provider, cfg.Model())
+	fmt.Printf("Coding Agent [%s / %s] (type 'exit' to quit)\n", cfg.Provider, cfg.Model())
 	fmt.Printf("Session: %s\n", ag.SessionLabel())
 	fmt.Println(strings.Repeat("-", 50))
 

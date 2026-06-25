@@ -19,9 +19,9 @@ func (ListDir) Name() string { return "list_dir" }
 func (ListDir) Definition() types.ToolDefinition {
 	return types.ToolDefinition{
 		Name:        "list_dir",
-		Description: "แสดงไฟล์และโฟลเดอร์ใน path ที่ระบุ ไม่ใส่ path = directory ปัจจุบัน",
+		Description: "List files and directories at the given path. Omit path for the current directory.",
 		Properties: map[string]any{
-			"path": map[string]any{"type": "string", "description": "path ของ directory ไม่ใส่ = '.'"},
+			"path": map[string]any{"type": "string", "description": "directory path; omit for '.'"},
 		},
 	}
 }
@@ -53,7 +53,7 @@ func (ListDir) Execute(ctx context.Context, input json.RawMessage) (string, erro
 		b.WriteString(fmt.Sprintf("%-40s %8d\n", name, size))
 	}
 	if b.Len() == 0 {
-		return "(directory ว่าง)", nil
+		return "(empty directory)", nil
 	}
 	return b.String(), nil
 }

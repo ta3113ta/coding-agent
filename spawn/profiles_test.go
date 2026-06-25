@@ -9,7 +9,7 @@ import (
 func TestProfileFor(t *testing.T) {
 	p, err := ProfileFor(TypeExplore)
 	require.NoError(t, err)
-	require.Len(t, p.Tools, 2)
+	require.Len(t, p.Tools, 4)
 
 	_, err = ProfileFor(Type("invalid"))
 	require.Error(t, err)
@@ -26,8 +26,10 @@ func TestAllowedTools_GeneralPurposeExcludesTask(t *testing.T) {
 
 func TestAllowedTools_Explore(t *testing.T) {
 	p, _ := ProfileFor(TypeExplore)
-	allowed := AllowedTools(p, []string{"read_file", "list_dir", "run_bash"})
+	allowed := AllowedTools(p, []string{"read_file", "list_dir", "grep", "glob", "run_bash"})
 	require.True(t, allowed["read_file"])
 	require.True(t, allowed["list_dir"])
+	require.True(t, allowed["grep"])
+	require.True(t, allowed["glob"])
 	require.False(t, allowed["run_bash"])
 }

@@ -1,8 +1,8 @@
 ---
 name: test-skill
-description: ตอบคำถามด้วยประโยคเปิดว่า "SKILL LOADED OK" เสมอ ใช้เมื่อผู้ใช้พิมพ์คำว่า skill-test
+description: Always start answers with "SKILL LOADED OK". Use when the user types skill-test.
 ---
 
 # Test Skill
 
-เมื่อถูกโหลด ให้ตอบขึ้นต้นด้วย "SKILL LOADED OK" แล้วทำตามคำสั่งผู้ใช้
+When loaded, start your reply with "SKILL LOADED OK" then follow the user's instructions.

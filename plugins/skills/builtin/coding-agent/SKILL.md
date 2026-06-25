@@ -1,35 +1,35 @@
 ---
 name: coding-agent
-description: สอน agent วิธีเพิ่ม tool, provider, prompt หรือ runner ตาม architecture ของ coding-agent project นี้ ใช้เมื่อผู้ใช้ขอเพิ่ม feature ใหม่ใน repo
+description: Teaches the agent how to add tools, providers, prompts, or runners following this coding-agent project's architecture. Use when the user asks to add a new feature to the repo.
 ---
 
 # Coding Agent Architecture Guide
 
-อ่าน [AGENTS.md](../../../AGENTS.md) ก่อนทำงาน
+Read [AGENTS.md](../../../AGENTS.md) before working.
 
-## กฎหลัก
+## Core rules
 
 1. **Contract** → core package (`agent/`, `types/`, `llm/`, `tools/`, `config/`, `plugin/`)
-2. **Implementation** → `plugins/` เท่านั้น
-3. ลงทะเบียนทุก plugin ใน `plugins/builtin/builtin.go`
-4. Feature ที่กระทบ architecture → เขียน ADR ใน `docs/adr/` ก่อน
+2. **Implementation** → `plugins/` only
+3. Register every plugin in `plugins/builtin/builtin.go`
+4. Features that affect architecture → write an ADR in `docs/adr/` first
 
-## เพิ่ม tool
+## Add a tool
 
-1. สร้าง `plugins/tools/mytool/my_tool.go`
+1. Create `plugins/tools/mytool/my_tool.go`
 2. Implement `tools.Tool` (`Name`, `Definition`, `Execute`)
-3. เพิ่ม `Plugin` struct + `Register()` เรียก `plugin.RegisterTools()`
-4. Append ใน `builtin.Default`
+3. Add a `Plugin` struct + `Register()` calling `plugin.RegisterTools()`
+4. Append to `builtin.Default`
 
-## เพิ่ม provider
+## Add a provider
 
-1. สร้าง `plugins/providers/myprovider/myprovider.go`
+1. Create `plugins/providers/myprovider/myprovider.go`
 2. Implement `llm.Provider` (`Complete`)
-3. เพิ่ม constant ใน `config/config.go`
-4. Register ใน `builtin.Default`
+3. Add a constant in `config/config.go`
+4. Register in `builtin.Default`
 
-## แก้ไฟล์
+## Edit files
 
-- อ่านก่อนแก้ด้วย `read_file`
-- แก้ไฟล์เดิมด้วย `str_replace` (primary)
-- สร้างไฟล์ใหม่ด้วย `write_file`
+- Read before editing with `read_file`
+- Edit existing files with `str_replace` (primary)
+- Create new files with `write_file`

@@ -5,18 +5,18 @@
 
 ## Context
 
-REPL runner รอ `provider.Complete` คืนค่าทั้งก้อนก่อนพิมพ์คำตอบ — UX ช้าและไม่รู้สึก interactive โดยเฉพาะคำตอบยาว
+The REPL runner waited for `provider.Complete` to return the full response before printing — slow UX and not interactive, especially for long answers.
 
-Streaming ต้องไหลจาก LLM API → provider → agent loop → runner แต่ agent loop ยังต้องเก็บ history และ tool calls แบบเดิมหลังจบแต่ละ turn
+Streaming must flow from the LLM API → provider → agent loop → runner, but the agent loop still needs to store history and tool calls the same way after each turn.
 
 ## Decision
 
-เพิ่ม **optional `OnStream` callback** บน `types.CompleteRequest`:
+Add an **optional `OnStream` callback** on `types.CompleteRequest`:
 
-- เมื่อ `OnStream != nil` — provider ใช้ SDK streaming API, emit `types.StreamEvent{TextDelta}` ระหว่างรับ chunk, แล้วคืน `CompleteResponse` ที่ accumulate ครบเหมือน non-streaming
-- เมื่อ `OnStream == nil` — provider ใช้ path เดิม (non-streaming)
+- When `OnStream != nil` — provider uses the SDK streaming API, emits `types.StreamEvent{TextDelta}` while receiving chunks, then returns a `CompleteResponse` accumulated fully like non-streaming
+- When `OnStream == nil` — provider uses the original path (non-streaming)
 
-Runner (REPL) ส่ง callback ที่ `fmt.Print` text delta ทันที; tool calls ยังแสดงหลังจบ LLM turn ผ่าน verbose mode ใน agent loop
+The runner (REPL) passes a callback that `fmt.Print`s text deltas immediately; tool calls still display after the LLM turn ends via verbose mode in the agent loop.
 
 Implementation:
 - [`types/types.go`](../../types/types.go) — `StreamEvent`, `CompleteRequest.OnStream`
@@ -27,22 +27,22 @@ Implementation:
 
 ## Alternatives Considered
 
-| แนวทาง | เหตุผลที่ไม่เลือก |
+| Approach | Reason not chosen |
 |--------|-------------------|
-| `StreamingProvider` interface แยก | type assertion ซ้ำในหลายจุด |
-| `CompleteStream` method บน `Provider` | บังคับทุก provider implement แม้ไม่ใช้ |
-| Runner เรียก provider โดยตรง | ทำลาย layering, agent loop ข้าม |
-| Stream tool-call JSON | out of scope v1 — แสดงหลัง turn เหมือน verbose |
+| Separate `StreamingProvider` interface | Repeated type assertions in multiple places |
+| `CompleteStream` method on `Provider` | Forces every provider to implement even when unused |
+| Runner calls provider directly | Breaks layering, bypasses agent loop |
+| Stream tool-call JSON | Out of scope v1 — display after turn like verbose |
 
 ## Consequences
 
-**ข้อดี**
+**Pros**
 
-- REPL ตอบแบบ token-by-token โดยไม่เปลี่ยน agent history model
-- Backward compatible — `OnStream == nil` ใช้ path เดิม
-- Provider เดียวกัน serve ทั้ง streaming และ non-streaming caller
+- REPL responds token-by-token without changing the agent history model
+- Backward compatible — `OnStream == nil` uses the original path
+- Same provider serves both streaming and non-streaming callers
 
-**ข้อเสีย / trade-offs**
+**Cons / trade-offs**
 
-- Provider implementations ซับซ้อนขึ้น (สอง path + accumulation)
-- Tool calls ยังไม่ stream ระหว่าง generate (แสดงหลังจบ turn)
+- Provider implementations are more complex (two paths + accumulation)
+- Tool calls do not stream during generation (displayed after turn ends)

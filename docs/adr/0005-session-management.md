@@ -5,17 +5,17 @@
 
 ## Context
 
-Conversation history เก็บใน `agent.Agent.messages` ใน RAM เท่านั้น — REPL multi-turn ทำงานได้ภายใน process เดียว แต่ history หายเมื่อ exit และไม่สามารถ resume ข้ามการรันได้
+Conversation history lived only in `agent.Agent.messages` in RAM — REPL multi-turn worked within a single process, but history was lost on exit and could not be resumed across runs.
 
 ## Decision
 
-เพิ่ม **file-based JSON session persistence** ผ่าน core `session.Store` contract และ `plugins/session/filestore` implementation:
+Add **file-based JSON session persistence** via the core `session.Store` contract and `plugins/session/filestore` implementation:
 
 - **Persist:** `id`, `created_at`, `updated_at`, `provider`, `model`, `messages[]`
-- **Do not persist:** `systemPrompt` — re-resolve จาก bootstrap ตอน resume (skills/prompt อาจเปลี่ยนระหว่าง runs)
-- **Resume policy:** โหลด messages; ใช้ provider/model จาก config ปัจจุบันสำหรับ LLM calls ต่อไป (metadata ใน store ใช้แสดงใน list)
-- **Auto-save:** หลัง `Run()` สำเร็จแต่ละครั้ง
-- **Storage:** default `{cwd}/.coding-agent/sessions/`; `SESSION_SCOPE=global` → `~/.coding-agent/sessions/`; `SESSION_DIR` override ทั้งคู่
+- **Do not persist:** `systemPrompt` — re-resolve from bootstrap on resume (skills/prompt may change between runs)
+- **Resume policy:** load messages; use provider/model from current config for subsequent LLM calls (metadata in store is for display in list)
+- **Auto-save:** after each successful `Run()`
+- **Storage:** default `{cwd}/.coding-agent/sessions/`; `SESSION_SCOPE=global` → `~/.coding-agent/sessions/`; `SESSION_DIR` overrides both
 - **UX:** CLI `--resume`, `--new-session`, `--session-scope`, `--session-dir`; REPL `/new`, `/sessions`, `/resume <id>`, `/session`
 
 Implementation:
@@ -28,42 +28,42 @@ Implementation:
 
 ## Alternatives Considered
 
-| แนวทาง | เหตุผลที่ไม่เลือก v1 |
-|--------|----------------------|
-| File-based JSON (`session.Store` + filestore plugin) | **เลือกใช้** — minimal deps, human-readable, fits plugin architecture |
-| SQLite | overkill สำหรับ learning scope |
-| Provider-native session APIs (OpenRouter `session_id`) | coupled to provider; deferred |
-| In-agent RAM only | ไม่แก้ปัญหา persistence |
-| Persist `systemPrompt` | stale เมื่อ skills เปลี่ยน |
+| Approach | Reason not chosen for v1 |
+|--------|--------------------------|
+| File-based JSON (`session.Store` + filestore plugin) | **Chosen** — minimal deps, human-readable, fits plugin architecture |
+| SQLite | Overkill for learning scope |
+| Provider-native session APIs (OpenRouter `session_id`) | Coupled to provider; deferred |
+| In-agent RAM only | Does not solve persistence |
+| Persist `systemPrompt` | Stale when skills change |
 
 ## Consequences
 
-**ข้อดี**
+**Pros**
 
-- Resume conversation ข้าม process restarts
-- Project-local sessions default; global scope สำหรับ cross-project resume
-- Agent loop logic ไม่เปลี่ยน — hooks รอบ `Run()` เท่านั้น
-- Serialization DTO อยู่ใน filestore plugin — `types/` ยัง provider-neutral
+- Resume conversations across process restarts
+- Project-local sessions by default; global scope for cross-project resume
+- Agent loop logic unchanged — hooks only around `Run()`
+- Serialization DTO lives in filestore plugin — `types/` stays provider-neutral
 
-**ข้อเสีย / trade-offs**
+**Cons / trade-offs**
 
-- `--resume` บน startup สร้าง empty session ก่อน load (orphan file เล็กน้อย) — **แก้ใน v2** ด้วย `InitNewSession` แทน auto-create ใน `New`
-- ไม่มี `/delete`, context compaction ใน v1
-- `List` โหลด metadata จากทุกไฟล์ — พอใช้สำหรับ session จำนวนน้อย
+- `--resume` on startup creates an empty session before load (minor orphan file) — **fixed in v2** with `InitNewSession` instead of auto-create in `New`
+- No `/delete`, context compaction in v1
+- `List` loads metadata from every file — fine for a small number of sessions
 
 ## v2 amendment (2026-06-18)
 
 ### Context
 
-v1 ขาด display name, ephemeral mode, และ startup UX ที่สะดวก (`-c` continue latest, `-r` interactive picker)
+v1 lacked display name, ephemeral mode, and convenient startup UX (`-c` continue latest, `-r` interactive picker).
 
 ### Decision
 
-- **Display name:** เพิ่ม `name` ใน session JSON; CLI `--name`, REPL `/name <name>`
-- **Ephemeral mode:** `--no-session` ใช้ `plugins/session/memory` (in-RAM `Store`, ไม่เขียน disk)
-- **Startup flags:** `-c` resume latest; `-r` interactive picker; flag precedence ใน `main.go`
-- **Startup refactor:** `agent.New` ไม่ auto-create session; `main` เรียก `InitNewSession` หรือ `ResumeSession` ตาม flags — แก้ orphan file บน resume paths
-- **Default:** ไม่มี flag → new empty session ทุกครั้ง (เหมือนเดิม)
+- **Display name:** add `name` to session JSON; CLI `--name`, REPL `/name <name>`
+- **Ephemeral mode:** `--no-session` uses `plugins/session/memory` (in-RAM `Store`, no disk writes)
+- **Startup flags:** `-c` resume latest; `-r` interactive picker; flag precedence in `main.go`
+- **Startup refactor:** `agent.New` does not auto-create session; `main` calls `InitNewSession` or `ResumeSession` per flags — fixes orphan file on resume paths
+- **Default:** no flag → new empty session every time (same as before)
 
 Flag precedence: `--no-session` > `--new-session` > `--resume` > `-c` > `-r`
 
@@ -71,4 +71,3 @@ Implementation additions:
 - [`plugins/session/memory/memory.go`](../../plugins/session/memory/memory.go) — ephemeral store
 - [`plugins/session/picker/picker.go`](../../plugins/session/picker/picker.go) — `-r` interactive selection
 - [`session/session.go`](../../session/session.go) — `Name`, `Latest()`
-

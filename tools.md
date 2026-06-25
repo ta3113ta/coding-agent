@@ -2,6 +2,8 @@
 
 Tools available to the AI assistant in Cursor (not the `coding-agent` project tools like `read_file`, `str_replace`, etc.).
 
+**Note:** This project implements its own `grep` and `glob` tools (via ripgrep) — see [ADR-0009](docs/adr/0009-grep-glob-internal-search.md).
+
 ## Core file & code tools
 
 | Tool | What it does |

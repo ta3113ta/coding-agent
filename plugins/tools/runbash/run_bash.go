@@ -20,9 +20,9 @@ func (RunBash) Name() string { return "run_bash" }
 func (RunBash) Definition() types.ToolDefinition {
 	return types.ToolDefinition{
 		Name:        "run_bash",
-		Description: "รันคำสั่ง bash ใน working directory ปัจจุบัน ใช้สำหรับ grep, find, git, go build/test ฯลฯ มี timeout 60 วินาที",
+		Description: "Run a bash command in the current working directory. Use for git, go build/test, etc. Not for search (use grep/glob instead). 60 second timeout.",
 		Properties: map[string]any{
-			"command": map[string]any{"type": "string", "description": "คำสั่ง bash ที่จะรัน"},
+			"command": map[string]any{"type": "string", "description": "bash command to run"},
 		},
 		Required: []string{"command"},
 	}
@@ -47,13 +47,13 @@ func (RunBash) Execute(ctx context.Context, input json.RawMessage) (string, erro
 
 	result := truncate(out.String(), 30_000)
 	if ctx.Err() == context.DeadlineExceeded {
-		return result + "\n(timeout หลัง 60 วินาที)", nil
+		return result + "\n(timeout after 60 seconds)", nil
 	}
 	if err != nil {
 		return fmt.Sprintf("%s\n(exit error: %v)", result, err), nil
 	}
 	if result == "" {
-		return "(ไม่มี output, exit 0)", nil
+		return "(no output, exit 0)", nil
 	}
 	return result, nil
 }
@@ -64,7 +64,7 @@ func truncate(s string, max int) string {
 	}
 	head := max * 6 / 10
 	tail := max - head
-	return s[:head] + fmt.Sprintf("\n... (ตัด %d bytes ตรงกลาง) ...\n", len(s)-max) + s[len(s)-tail:]
+	return s[:head] + fmt.Sprintf("\n... (truncated %d bytes in the middle) ...\n", len(s)-max) + s[len(s)-tail:]
 }
 
 type Plugin struct{}

@@ -19,10 +19,10 @@ func (WriteFile) Name() string { return "write_file" }
 func (WriteFile) Definition() types.ToolDefinition {
 	return types.ToolDefinition{
 		Name:        "write_file",
-		Description: "เขียนเนื้อหาลงไฟล์ สร้าง directory ให้อัตโนมัติถ้ายังไม่มี เขียนทับของเดิมทั้งหมด",
+		Description: "Write content to a file. Creates parent directories automatically if needed. Overwrites existing content entirely.",
 		Properties: map[string]any{
-			"path":    map[string]any{"type": "string", "description": "path ของไฟล์ที่จะเขียน"},
-			"content": map[string]any{"type": "string", "description": "เนื้อหาทั้งหมดของไฟล์"},
+			"path":    map[string]any{"type": "string", "description": "path of the file to write"},
+			"content": map[string]any{"type": "string", "description": "full file content"},
 		},
 		Required: []string{"path", "content"},
 	}
@@ -45,7 +45,7 @@ func (WriteFile) Execute(ctx context.Context, input json.RawMessage) (string, er
 	if err := os.WriteFile(args.Path, []byte(args.Content), 0o644); err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("เขียนไฟล์ %s สำเร็จ (%d bytes)", args.Path, len(args.Content)), nil
+	return fmt.Sprintf("wrote file %s successfully (%d bytes)", args.Path, len(args.Content)), nil
 }
 
 type Plugin struct{}
