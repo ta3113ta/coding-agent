@@ -96,6 +96,9 @@ go run . --provider openrouter --model openai/gpt-4o
 | `COMPACTION_KEEP_RECENT_TOKENS` | `20000` | Token budget for recent messages to keep after compaction |
 | `COMPACTION_CONTEXT_WINDOW` | `200000` | Context window override (model lookup used when unset) |
 | `--no-compaction` | — | Disable context compaction |
+| `PLAN_ENABLED` | `true` | Enable plan mode and todo tracking (`false` to disable) |
+| `--no-plan` | — | Disable plan mode and todo tracking |
+| `--plan` | — | Start in plan mode (read-only research) |
 
 CLI flags override env values.
 
@@ -112,6 +115,8 @@ Sessions auto-save after each turn. Resume with `-c`, `-r`, `--resume <id>`, or 
 Permission hooks run before each tool dispatch — script rules from `.coding-agent/hooks.json` plus interactive REPL approval for risky tools — see [ADR-0006](docs/adr/0006-permission-hooks.md).
 
 Context compaction auto-summarizes older history when the projected context exceeds `contextWindow - reserveTokens`; use `/compact` or `/compact focus on API changes` to force compaction — see [ADR-0007](docs/adr/0007-context-compaction.md).
+
+Plan mode restricts the agent to read-only tools until you `/approve` a draft plan (optionally with `/approve <instructions>` to implement immediately). Use `/plan` or `/plan <task>` to research and draft a plan; the REPL prompt shows `you (plan)>` in plan mode — see [ADR-0010](docs/adr/0010-plan-mode-todo-tracking.md).
 
 ## Agent loop core (agent/agent.go)
 
@@ -140,11 +145,11 @@ loop:
 - Context compaction — [ADR-0007](docs/adr/0007-context-compaction.md)
 - Sub-agents / task spawning — [ADR-0008](docs/adr/0008-sub-agent-task-spawning.md)
 - Grep + Glob internal search — [ADR-0009](docs/adr/0009-grep-glob-internal-search.md)
+- Plan mode + todo tracking — [ADR-0010](docs/adr/0010-plan-mode-todo-tracking.md)
 
 ## Road map
 
 - **External search: web fetch + web search**
-- **TODO / plan tracking**
 - **Thinking level / reasoning tokens**
 - **Parallel tool execution**
 - **More tools: see ./tools.md**

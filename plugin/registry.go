@@ -8,6 +8,7 @@ import (
 	"coding-agent/config"
 	"coding-agent/llm"
 	"coding-agent/permission"
+	"coding-agent/plan"
 	"coding-agent/spawn"
 	"coding-agent/tools"
 )
@@ -26,8 +27,9 @@ func Bootstrap(cfg config.Config, plugins ...Plugin) (*App, error) {
 	}
 
 	app := &App{
-		Config: cfg,
-		Tools:  tools.NewRegistry(),
+		Config:    cfg,
+		Tools:     tools.NewRegistry(),
+		PlanState: plan.NewSessionState(),
 	}
 
 	for _, p := range plugins {

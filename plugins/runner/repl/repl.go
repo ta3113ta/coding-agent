@@ -5,10 +5,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"text/tabwriter"
 	"time"
 
+	"coding-agent/plan"
 	"coding-agent/plugin"
 	"coding-agent/session"
 	"coding-agent/types"
@@ -19,7 +21,7 @@ type Runner struct{}
 func (Runner) Run(ctx context.Context, ag plugin.AgentHandle) error {
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		fmt.Print("\n👤 you> ")
+		fmt.Print(inputPrompt(ag))
 
 		line, err := reader.ReadString('\n')
 		if err != nil {
@@ -41,21 +43,33 @@ func (Runner) Run(ctx context.Context, ag plugin.AgentHandle) error {
 			}
 		}
 
-		fmt.Print("\n🤖 ")
-
-		onStream := func(ev types.StreamEvent) {
-			fmt.Print(ev.TextDelta)
+		if err := runAgentTurn(ctx, ag, line); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		}
-
-		_, runErr := ag.Run(ctx, line, onStream)
-		if runErr != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", runErr)
-			continue
-		}
-
-		fmt.Println()
 	}
 
+	return nil
+}
+
+func inputPrompt(ag plugin.AgentHandle) string {
+	if ag.PlanEnabled() && ag.CurrentMode() == plan.ModePlan {
+		return "\n👤 you (plan)> "
+	}
+	return "\n👤 you> "
+}
+
+func runAgentTurn(ctx context.Context, ag plugin.AgentHandle, prompt string) error {
+	fmt.Print("\n🤖 ")
+
+	onStream := func(ev types.StreamEvent) {
+		fmt.Print(ev.TextDelta)
+	}
+
+	if _, err := ag.Run(ctx, prompt, onStream); err != nil {
+		return err
+	}
+
+	fmt.Println()
 	return nil
 }
 
@@ -86,10 +100,10 @@ func handleSlashCommand(ctx context.Context, ag plugin.AgentHandle, line string)
 		} else if err := ag.ResumeSession(ctx, parts[1]); err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		} else {
-			fmt.Printf("resumed session: %s\n", ag.SessionLabel())
+			fmt.Printf("resumed session: %s (mode: %s)\n", ag.SessionLabel(), ag.CurrentMode())
 		}
 	case "/session":
-		fmt.Println(ag.SessionLabel())
+		fmt.Printf("%s (mode: %s)\n", ag.SessionLabel(), ag.CurrentMode())
 	case "/name":
 		if len(parts) < 2 {
 			fmt.Fprintln(os.Stderr, "usage: /name <display name>")
@@ -108,11 +122,81 @@ func handleSlashCommand(ctx context.Context, ag plugin.AgentHandle, line string)
 		} else {
 			fmt.Println("context compacted")
 		}
+	case "/plan":
+		if len(parts) >= 2 && parts[1] == "show" {
+			printPlan(ag)
+		} else {
+			prompt := strings.TrimSpace(strings.TrimPrefix(line, "/plan"))
+			if err := ag.SetMode(ctx, plan.ModePlan); err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			} else if prompt == "" {
+				fmt.Println("plan mode (read-only)")
+			} else if err := runAgentTurn(ctx, ag, prompt); err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			}
+		}
+	case "/agent":
+		if err := ag.SetMode(ctx, plan.ModeAgent); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		} else {
+			fmt.Println("switched to agent mode")
+		}
+	case "/approve":
+		prompt := strings.TrimSpace(strings.TrimPrefix(line, "/approve"))
+		if err := ag.ApprovePlan(ctx); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		} else if err := ag.SetMode(ctx, plan.ModeAgent); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		} else if prompt != "" {
+			if err := runAgentTurn(ctx, ag, prompt); err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			}
+		} else {
+			fmt.Println("plan approved; switched to agent mode")
+		}
+	case "/todos":
+		printTodos(ag)
 	default:
-		fmt.Fprintln(os.Stderr, "unknown command; try /new, /sessions, /resume <id>, /session, /name <name>, /compact")
+		fmt.Fprintln(os.Stderr, "unknown command; try /new, /sessions, /resume <id>, /session, /name <name>, /compact, /plan, /agent, /approve, /todos")
 		return false
 	}
 	return true
+}
+
+func printPlan(ag plugin.AgentHandle) {
+	if !ag.PlanEnabled() {
+		fmt.Fprintln(os.Stderr, "plan mode is disabled")
+		return
+	}
+	p := ag.CurrentPlan()
+	if p == nil {
+		fmt.Println("no plan")
+		return
+	}
+	fmt.Printf("Title: %s\nStatus: %s\nOverview: %s\n", p.Title, p.Status, p.Overview)
+	if id := ag.CurrentSessionID(); id != "" {
+		cwd, err := os.Getwd()
+		if err == nil {
+			path := filepath.Join(cwd, ".coding-agent", "plans", id+".md")
+			fmt.Printf("File: %s\n", path)
+		}
+	}
+	fmt.Println()
+	fmt.Println(p.Body)
+}
+
+func printTodos(ag plugin.AgentHandle) {
+	todos := ag.ListTodos()
+	if len(todos) == 0 {
+		fmt.Println("no todos")
+		return
+	}
+	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "ID\tSTATUS\tCONTENT")
+	for _, todo := range todos {
+		fmt.Fprintf(tw, "%s\t%s\t%s\n", todo.ID, todo.Status, todo.Content)
+	}
+	_ = tw.Flush()
 }
 
 func printSessions(w *os.File, metas []session.Meta) {

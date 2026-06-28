@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"coding-agent/plan"
 	"coding-agent/plugin"
 	"coding-agent/session"
 	"coding-agent/types"
@@ -27,6 +28,9 @@ type sessionDTO struct {
 	Provider    string            `json:"provider"`
 	Model       string            `json:"model"`
 	Name        string            `json:"name,omitempty"`
+	Mode        string            `json:"mode,omitempty"`
+	Todos       []plan.TodoItem   `json:"todos,omitempty"`
+	Plan        *plan.Plan        `json:"plan,omitempty"`
 	Messages    []messageDTO      `json:"messages"`
 	Compactions []compactionDTO   `json:"compactions,omitempty"`
 }
@@ -186,6 +190,9 @@ func sessionToDTO(s *session.Session) sessionDTO {
 		Provider:  s.Provider,
 		Model:     s.Model,
 		Name:      s.Name,
+		Mode:      s.Mode,
+		Todos:     append([]plan.TodoItem(nil), s.Todos...),
+		Plan:      s.Plan,
 		Messages:  make([]messageDTO, len(s.Messages)),
 	}
 	for i, m := range s.Messages {
@@ -228,6 +235,9 @@ func dtoToSession(dto sessionDTO) *session.Session {
 		Provider:  dto.Provider,
 		Model:     dto.Model,
 		Name:      dto.Name,
+		Mode:      dto.Mode,
+		Todos:     append([]plan.TodoItem(nil), dto.Todos...),
+		Plan:      dto.Plan,
 		Messages:  make([]types.Message, len(dto.Messages)),
 	}
 	for i, m := range dto.Messages {

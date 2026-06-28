@@ -59,6 +59,8 @@ func (r *Runner) Run(ctx context.Context, req spawn.Request) (spawn.Result, erro
 		r.providerName,
 		r.permission,
 		nil,
+		nil,
+		false,
 	)
 	if err != nil {
 		return spawn.Result{}, fmt.Errorf("child agent: %w", err)
@@ -82,11 +84,18 @@ func (Plugin) Register(app *plugin.App) error {
 	if !app.Config.SpawnEnabled {
 		return nil
 	}
-	if app.Provider == nil {
-		return fmt.Errorf("provider required for spawn runner")
+
+	provider := app.Provider
+	if provider == nil {
+		var err error
+		provider, err = llm.NewProvider(app.Config)
+		if err != nil {
+			return fmt.Errorf("spawn runner: %w", err)
+		}
 	}
+
 	plugin.RegisterSpawner(app, &Runner{
-		provider:     app.Provider,
+		provider:     provider,
 		basePrompt:   app.Prompt,
 		model:        app.Config.Model(),
 		promptCache:  app.Config.PromptCache(),

@@ -7,6 +7,7 @@ import (
 	"coding-agent/config"
 	"coding-agent/llm"
 	"coding-agent/permission"
+	"coding-agent/plan"
 	"coding-agent/session"
 	"coding-agent/skills"
 	"coding-agent/spawn"
@@ -25,6 +26,7 @@ type App struct {
 	Permission   *permission.Chain
 	Compactor    compaction.Compactor
 	Spawner      spawn.Runner
+	PlanState    *plan.SessionState
 }
 
 type Plugin interface {
@@ -49,6 +51,7 @@ type PromptContributor interface {
 type AgentHandle interface {
 	Run(ctx context.Context, userInput string, onStream func(types.StreamEvent)) (string, error)
 	SessionManager
+	PlanManager
 }
 
 type SessionManager interface {
@@ -60,6 +63,16 @@ type SessionManager interface {
 	CurrentSessionName() string
 	SessionLabel() string
 	CompactSession(ctx context.Context, customInstructions string) error
+}
+
+type PlanManager interface {
+	SetMode(ctx context.Context, mode plan.Mode) error
+	CurrentMode() plan.Mode
+	ApprovePlan(ctx context.Context) error
+	CurrentPlan() *plan.Plan
+	ListTodos() []plan.TodoItem
+	CanSwitchToAgent() (bool, string)
+	PlanEnabled() bool
 }
 
 type Runner interface {

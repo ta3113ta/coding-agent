@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"coding-agent/agent"
+	"coding-agent/plan"
 	"coding-agent/plugin"
 	"coding-agent/plugins/builtin"
 	"coding-agent/plugins/session/memory"
@@ -22,6 +23,7 @@ type startupFlags struct {
 	newSession     bool
 	resume         string
 	name           string
+	startInPlan    bool
 }
 
 func main() {
@@ -37,6 +39,8 @@ func main() {
 	noPermissionFlag := flag.Bool("no-permission", false, "Disable permission hooks before tool execution")
 	noCompactionFlag := flag.Bool("no-compaction", false, "Disable context compaction")
 	noSpawnFlag := flag.Bool("no-spawn", false, "Disable sub-agent task spawning")
+	noPlanFlag := flag.Bool("no-plan", false, "Disable plan mode and todo tracking")
+	planFlag := flag.Bool("plan", false, "Start in plan mode (read-only research)")
 	nameFlag := flag.String("name", "", "Set session display name at startup")
 	flag.Parse()
 
@@ -47,6 +51,7 @@ func main() {
 		newSession:     *newSessionFlag,
 		resume:         strings.TrimSpace(*resumeFlag),
 		name:           strings.TrimSpace(*nameFlag),
+		startInPlan:    *planFlag,
 	}
 
 	if err := validateStartupFlags(flags); err != nil {
@@ -60,6 +65,12 @@ func main() {
 	cfg.ApplyPermissionFlags(*noPermissionFlag)
 	cfg.ApplyCompactionFlags(*noCompactionFlag)
 	cfg.ApplySpawnFlags(*noSpawnFlag)
+	cfg.ApplyPlanFlags(*noPlanFlag)
+
+	if flags.startInPlan && !cfg.PlanEnabled {
+		fmt.Fprintln(os.Stderr, "--plan cannot be used with --no-plan")
+		os.Exit(1)
+	}
 
 	app, err := plugin.Bootstrap(cfg, builtin.Default...)
 	if err != nil {
@@ -89,6 +100,8 @@ func main() {
 		string(cfg.Provider),
 		app.Permission,
 		app.Compactor,
+		app.PlanState,
+		cfg.PlanEnabled,
 	)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -108,8 +121,15 @@ func main() {
 		}
 	}
 
+	if flags.startInPlan {
+		if err := ag.SetMode(ctx, plan.ModePlan); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	}
+
 	fmt.Printf("Coding Agent [%s / %s] (type 'exit' to quit)\n", cfg.Provider, cfg.Model())
-	fmt.Printf("Session: %s\n", ag.SessionLabel())
+	fmt.Printf("Session: %s | Mode: %s\n", ag.SessionLabel(), ag.CurrentMode())
 	fmt.Println(strings.Repeat("-", 50))
 
 	if err := app.Runner.Run(ctx, ag); err != nil {

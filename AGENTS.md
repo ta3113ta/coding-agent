@@ -22,6 +22,7 @@ This project uses a **minimal core + compile-time plugins** design. The core def
 | [`permission/`](../permission/permission.go) | Permission hook contract + chain |
 | [`compaction/`](../compaction/compaction.go) | Context compaction contract |
 | [`spawn/`](../spawn/spawn.go) | Sub-agent spawning contract |
+| [`plan/`](../plan/) | Plan mode + todo tracking types and session state |
 | [`plugin/`](../plugin/) | Plugin interfaces + `Bootstrap()` |
 
 **Rule:** If it talks to an external API, runs shell commands, or defines a persona — it is a plugin, not core.
@@ -46,43 +47,6 @@ Register every new plugin in [`plugins/builtin/builtin.go`](../plugins/builtin/b
 2. Implement `tools.Tool` (`Name`, `Definition`, `Execute`)
 3. Add a `Plugin` struct with `Register()` that calls `plugin.RegisterTools()`
 4. Append `mytool.Plugin{}` to `builtin.Default`
-
-```go
-package mytool
-
-import (
-    "encoding/json"
-    "coding-agent/types"
-    "coding-agent/plugin"
-    "coding-agent/tools"
-)
-
-type MyTool struct{}
-
-func (MyTool) Name() string { return "my_tool" }
-
-func (MyTool) Definition() types.ToolDefinition {
-    return types.ToolDefinition{
-        Name:        "my_tool",
-        Description: "...",
-        Properties:  map[string]any{ /* JSON schema */ },
-        Required:    []string{"field"},
-    }
-}
-
-func (MyTool) Execute(input json.RawMessage) (string, error) {
-    // ...
-}
-
-type Plugin struct{}
-
-func (Plugin) Name() string { return "tools/mytool" }
-
-func (Plugin) Register(app *plugin.App) error {
-    plugin.RegisterTools(app, MyTool{})
-    return nil
-}
-```
 
 ## File editing tools
 
@@ -117,25 +81,17 @@ Conversation history is persisted as JSON via the `session.Store` contract and f
 
 Before `registry.Dispatch` the agent calls `permission.Chain` — script hooks from `.coding-agent/hooks.json` (`preToolUse`) followed by an interactive REPL prompt for risky tools — see [ADR-0006](docs/adr/0006-permission-hooks.md)
 
-- Config: `PERMISSION_ENABLED`, `PERMISSION_HOOKS_FILE`, `--no-permission`
-- Core: [`permission/permission.go`](../permission/permission.go)
-- Plugins: [`plugins/permission/script/`](../plugins/permission/script/), [`plugins/permission/interactive/`](../plugins/permission/interactive/)
-
 ## Context compaction
 
 Before `provider.Complete` the agent calls `compaction.Compactor` — auto-summarize when projected context exceeds `contextWindow - reserveTokens`, or manual `/compact [instructions]` — see [ADR-0007](docs/adr/0007-context-compaction.md)
-
-- Config: `COMPACTION_ENABLED`, `COMPACTION_RESERVE_TOKENS`, `COMPACTION_KEEP_RECENT_TOKENS`, `COMPACTION_CONTEXT_WINDOW`, `--no-compaction`
-- Core: [`compaction/`](../compaction/) (serialize, project, split-by-tokens, file ops)
-- Plugin: [`plugins/compaction/summarize/`](../plugins/compaction/summarize/)
 
 ## Sub-agent spawning
 
 The parent agent calls the `task` tool to spawn a sub-agent synchronously — the sub-agent uses an in-memory temporary session, a tool set per profile, and does not touch the parent archive — see [ADR-0008](docs/adr/0008-sub-agent-task-spawning.md)
 
-- Config: `SPAWN_ENABLED`, `SPAWN_MAX_TURNS`, `--no-spawn`
-- Core: [`spawn/`](../spawn/) (types, profiles, Runner contract)
-- Plugins: [`plugins/spawn/runner/`](../plugins/spawn/runner/), [`plugins/tools/task/`](../plugins/tools/task/)
+## Plan mode + todo tracking
+
+Plan mode restricts tools to read-only research; `create_plan` saves a draft for `/approve` (switches to agent mode; optional trailing text runs implementation). `/plan [task]` enters plan mode or plans in one shot. `todo_write` tracks in-session tasks persisted in session JSON — see [ADR-0010](docs/adr/0010-plan-mode-todo-tracking.md)
 
 ## Architecture Decision Records
 
@@ -157,21 +113,6 @@ Template:
 3. Add `Plugin` with `Register()` calling `plugin.RegisterProvider()`
 4. Add provider name constants to `config/config.go`
 5. Append to `builtin.Default`
-
-```go
-type providerPlugin struct{}
-
-func (providerPlugin) ProviderName() config.ProviderName { return "myprovider" }
-
-func (providerPlugin) NewProvider(cfg config.Config) (llm.Provider, error) {
-    return newProvider(cfg)
-}
-
-func (Plugin) Register(app *plugin.App) error {
-    plugin.RegisterProvider(app, providerPlugin{})
-    return nil
-}
-```
 
 ## How to add a prompt plugin
 
@@ -199,7 +140,7 @@ main.go
       3. Providers registered in llm registry
       4. Prompts concatenated
       5. llm.NewProvider(cfg) resolves active provider
-  → agent.New(provider, tools, model, prompt, cache, verbose, sessionStore, providerName, app.Permission, app.Compactor)
+  → agent.New(provider, tools, model, prompt, cache, verbose, sessionStore, providerName, app.Permission, app.Compactor, app.PlanState, cfg.PlanEnabled)
   → app.Runner.Run(ctx, agent)
 ```
 

@@ -1,0 +1,24 @@
+---
+description: Go coding conventions
+globs: "**/*.go"
+alwaysApply: false
+---
+
+# Go Conventions
+
+## Static errors
+
+Use `errors.New()` for fixed error messages with no formatting. Reserve `fmt.Errorf()` for messages that use verbs (`%w`, `%v`, `%s`, etc.).
+
+```go
+// ❌ BAD — no format verbs
+return "", fmt.Errorf("plan mode is disabled")
+
+// ✅ GOOD
+return "", errors.New("plan mode is disabled")
+
+// ✅ GOOD — formatting needed
+return fmt.Errorf("open %s: %w", path, err)
+```
+
+Import `"errors"` when introducing `errors.New()`; drop unused `"fmt"` imports if `fmt` is no longer needed in the file.

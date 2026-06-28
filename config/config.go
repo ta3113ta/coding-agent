@@ -50,6 +50,7 @@ type Config struct {
 	CompactionContextWindow    int
 	SpawnEnabled               bool
 	SpawnMaxTurns              int
+	PlanEnabled                bool
 }
 
 func LoadFromEnv() Config {
@@ -87,6 +88,7 @@ func LoadFromEnv() Config {
 		CompactionContextWindow:    parseIntEnv("COMPACTION_CONTEXT_WINDOW", defaultCompactionContextWindow),
 		SpawnEnabled:               parseBoolEnv("SPAWN_ENABLED", true),
 		SpawnMaxTurns:              parseIntEnv("SPAWN_MAX_TURNS", defaultSpawnMaxTurns),
+		PlanEnabled:                parseBoolEnv("PLAN_ENABLED", true),
 	}
 }
 
@@ -148,6 +150,12 @@ func parsePermissionHooksFile(raw string) string {
 func (c *Config) ApplySpawnFlags(noSpawn bool) {
 	if noSpawn {
 		c.SpawnEnabled = false
+	}
+}
+
+func (c *Config) ApplyPlanFlags(noPlan bool) {
+	if noPlan {
+		c.PlanEnabled = false
 	}
 }
 

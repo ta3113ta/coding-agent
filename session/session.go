@@ -5,6 +5,7 @@ import (
 	"sort"
 	"time"
 
+	"coding-agent/plan"
 	"coding-agent/types"
 )
 
@@ -25,6 +26,9 @@ type Session struct {
 	Provider    string
 	Model       string
 	Name        string
+	Mode        string
+	Todos       []plan.TodoItem
+	Plan        *plan.Plan
 	Messages    []types.Message
 	Compactions []CompactionRecord
 }

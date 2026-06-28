@@ -46,8 +46,17 @@ func (r *Registry) Names() []string {
 
 // Definitions returns all schemas in a format the provider can use.
 func (r *Registry) Definitions() []types.ToolDefinition {
+	return r.DefinitionsFiltered(nil)
+}
+
+// DefinitionsFiltered returns tool schemas limited to allowed names.
+// When allowed is nil, all registered tools are returned.
+func (r *Registry) DefinitionsFiltered(allowed map[string]bool) []types.ToolDefinition {
 	out := make([]types.ToolDefinition, 0, len(r.tools))
 	for _, t := range r.tools {
+		if allowed != nil && !allowed[t.Name()] {
+			continue
+		}
 		out = append(out, t.Definition())
 	}
 	return out

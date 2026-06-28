@@ -10,6 +10,7 @@ import (
 
 	"coding-agent/compaction"
 	"coding-agent/permission"
+	"coding-agent/plan"
 	"coding-agent/session"
 	"coding-agent/tools"
 	"coding-agent/types"
@@ -127,7 +128,7 @@ func newTestAgentWithPermission(t *testing.T, provider *fakeStreamProvider, perm
 func newTestAgentWithOptions(t *testing.T, provider *fakeStreamProvider, perm *permission.Chain, compactor compaction.Compactor) (*Agent, *memStore) {
 	t.Helper()
 	store := newMemStore()
-	ag, err := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", perm, compactor)
+	ag, err := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", perm, compactor, plan.NewSessionState(), false)
 	require.NoError(t, err)
 	require.NoError(t, ag.InitNewSession(context.Background()))
 	return ag, store
@@ -218,7 +219,7 @@ func TestSetSessionName(t *testing.T) {
 func TestInitNewSession(t *testing.T) {
 	provider := &fakeStreamProvider{text: "ok"}
 	store := newMemStore()
-	ag, err := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", nil, nil)
+	ag, err := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", nil, nil, plan.NewSessionState(), false)
 	require.NoError(t, err)
 	require.Empty(t, ag.CurrentSessionID())
 	require.NoError(t, ag.InitNewSession(context.Background()))
@@ -259,7 +260,7 @@ func TestRun_PermissionDenied(t *testing.T) {
 	reg.Register(&stubTool{onExecute: func() { executed = true }})
 
 	store := newMemStore()
-	ag, err := New(provider, reg, "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", perm, nil)
+	ag, err := New(provider, reg, "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", perm, nil, plan.NewSessionState(), false)
 	require.NoError(t, err)
 	require.NoError(t, ag.InitNewSession(context.Background()))
 
@@ -397,7 +398,7 @@ func TestRunSubtask_IsolatedFromParentArchive(t *testing.T) {
 	parentLen := len(ag.archive)
 
 	childStore := newMemStore()
-	child, err := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, childStore, "anthropic", nil, nil)
+	child, err := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, childStore, "anthropic", nil, nil, plan.NewSessionState(), false)
 	require.NoError(t, err)
 	require.NoError(t, child.InitNewSession(context.Background()))
 	_, err = child.RunSubtask(context.Background(), "child task", 0)
@@ -429,7 +430,7 @@ func (stubReadTool) Execute(ctx context.Context, input json.RawMessage) (string,
 func newTestAgentWithRegistry(t *testing.T, provider *loopingProvider, reg *tools.Registry) (*Agent, *memStore) {
 	t.Helper()
 	store := newMemStore()
-	ag, err := New(provider, reg, "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", nil, nil)
+	ag, err := New(provider, reg, "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", nil, nil, plan.NewSessionState(), false)
 	require.NoError(t, err)
 	require.NoError(t, ag.InitNewSession(context.Background()))
 	return ag, store

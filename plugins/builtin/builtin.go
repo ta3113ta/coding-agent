@@ -13,6 +13,7 @@ import (
 	"coding-agent/plugins/session/memory"
 	"coding-agent/plugins/skills"
 	spawnrunner "coding-agent/plugins/spawn/runner"
+	"coding-agent/plugins/tools/createplan"
 	"coding-agent/plugins/tools/glob"
 	"coding-agent/plugins/tools/grep"
 	"coding-agent/plugins/tools/listdir"
@@ -20,6 +21,7 @@ import (
 	"coding-agent/plugins/tools/runbash"
 	"coding-agent/plugins/tools/strreplace"
 	"coding-agent/plugins/tools/task"
+	"coding-agent/plugins/tools/todowrite"
 	"coding-agent/plugins/tools/writefile"
 )
 
@@ -34,6 +36,8 @@ var Default = []plugin.Plugin{
 	grep.Plugin{},
 	glob.Plugin{},
 	runbash.Plugin{},
+	todowrite.Plugin{},
+	createplan.Plugin{},
 
 	// permission plugins (script before interactive)
 	script.Plugin{},
