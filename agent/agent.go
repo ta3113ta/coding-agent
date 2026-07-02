@@ -346,16 +346,35 @@ func (a *Agent) runLoop(ctx context.Context, maxTurns int, onStream func(types.S
 			return "", err
 		}
 
-		resp, err := a.provider.Complete(ctx, types.CompleteRequest{
-			SystemPrompt: a.effectiveSystemPrompt(),
-			Messages:     a.messages,
-			Tools:        a.toolDefinitions(),
-			Model:        a.model,
-			MaxTokens:    8096,
-			OnStream:     onStream,
-			PromptCache:  a.promptCache,
-			SessionID:    a.sessionID,
-		})
+		const maxEmptyRetries = 2
+		var resp *types.CompleteResponse
+		var err error
+		for attempt := 0; attempt <= maxEmptyRetries; attempt++ {
+			resp, err = a.provider.Complete(ctx, types.CompleteRequest{
+				SystemPrompt: a.effectiveSystemPrompt(),
+				Messages:     a.messages,
+				Tools:        a.toolDefinitions(),
+				Model:        a.model,
+				MaxTokens:    8096,
+				OnStream:     onStream,
+				PromptCache:  a.promptCache,
+				SessionID:    a.sessionID,
+			})
+			if err != nil {
+				if attempt < maxEmptyRetries && isRetryableLLMError(err) {
+					continue
+				}
+				break
+			}
+			if strings.TrimSpace(resp.Text) != "" || len(resp.ToolCalls) > 0 {
+				break
+			}
+			err = errors.New("llm call: model returned empty response")
+			if attempt < maxEmptyRetries {
+				continue
+			}
+		}
+
 		if err != nil {
 			return "", fmt.Errorf("llm call: %w", err)
 		}
@@ -440,4 +459,17 @@ func (a *Agent) runLoop(ctx context.Context, maxTurns int, onStream func(types.S
 			})
 		}
 	}
+}
+
+func isRetryableLLMError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "empty response") ||
+		strings.Contains(msg, "context canceled") ||
+		strings.Contains(msg, "deadline exceeded")
 }

@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
+	"time"
 
 	openrouter "github.com/OpenRouterTeam/go-sdk"
 	"github.com/OpenRouterTeam/go-sdk/models/components"
@@ -22,8 +24,13 @@ type provider struct {
 }
 
 func newProvider(cfg config.Config) (llm.Provider, error) {
+	// No SDK per-request context timeout: Send() defers cancel() on return, which
+	// breaks SSE reads. Use a long HTTP client timeout for queue + stream instead.
 	return &provider{
-		client: openrouter.New(openrouter.WithSecurity(cfg.OpenRouterAPIKey)),
+		client: openrouter.New(
+			openrouter.WithSecurity(cfg.OpenRouterAPIKey),
+			openrouter.WithClient(&http.Client{Timeout: 3 * time.Minute}),
+		),
 	}, nil
 }
 
@@ -117,6 +124,9 @@ func (p *provider) completeNonStreaming(ctx context.Context, chatReq components.
 			Input: json.RawMessage(fn.Arguments),
 		})
 	}
+	if strings.TrimSpace(out.Text) == "" && len(out.ToolCalls) == 0 {
+		return nil, fmt.Errorf("openrouter: model returned empty response")
+	}
 	return out, nil
 }
 
@@ -146,11 +156,18 @@ func (p *provider) completeStreaming(ctx context.Context, req types.CompleteRequ
 			continue
 		}
 		data := chunk.GetData()
+		if streamErr := data.GetError(); streamErr != nil {
+			return nil, fmt.Errorf("openrouter: %s (code %d)", streamErr.GetMessage(), streamErr.GetCode())
+		}
 		for _, choice := range (&data).GetChoices() {
 			delta := choice.GetDelta()
 			if content, ok := delta.GetContent().GetOrZero(); ok && content != "" {
 				out.Text += content
 				req.OnStream(types.StreamEvent{TextDelta: content})
+			}
+			if reasoning, ok := delta.GetReasoning().GetOrZero(); ok && reasoning != "" {
+				// Stream reasoning for live feedback only; do not persist in out.Text.
+				req.OnStream(types.StreamEvent{TextDelta: reasoning})
 			}
 			for _, tc := range delta.GetToolCalls() {
 				idx := tc.GetIndex()
@@ -185,6 +202,9 @@ func (p *provider) completeStreaming(ctx context.Context, req types.CompleteRequ
 			Name:  acc.name,
 			Input: json.RawMessage(acc.arguments.String()),
 		})
+	}
+	if strings.TrimSpace(out.Text) == "" && len(out.ToolCalls) == 0 {
+		return nil, fmt.Errorf("openrouter: model returned empty response")
 	}
 	return out, nil
 }

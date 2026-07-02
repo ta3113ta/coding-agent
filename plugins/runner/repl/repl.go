@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"text/tabwriter"
 	"time"
 
@@ -61,8 +62,15 @@ func inputPrompt(ag plugin.AgentHandle) string {
 func runAgentTurn(ctx context.Context, ag plugin.AgentHandle, prompt string) error {
 	fmt.Print("\n🤖 ")
 
+	var streamCount atomic.Int32
+	waitCtx, cancelWait := context.WithCancel(ctx)
+	defer cancelWait()
+	go showWaitingIndicator(waitCtx, &streamCount)
+
 	onStream := func(ev types.StreamEvent) {
+		streamCount.Add(1)
 		fmt.Print(ev.TextDelta)
+		_ = os.Stdout.Sync()
 	}
 
 	if _, err := ag.Run(ctx, prompt, onStream); err != nil {
@@ -71,6 +79,18 @@ func runAgentTurn(ctx context.Context, ag plugin.AgentHandle, prompt string) err
 
 	fmt.Println()
 	return nil
+}
+
+func showWaitingIndicator(ctx context.Context, streamCount *atomic.Int32) {
+	timer := time.NewTimer(3 * time.Second)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+	case <-timer.C:
+		if streamCount.Load() == 0 {
+			fmt.Fprint(os.Stderr, "\n⏳ waiting for model…\n")
+		}
+	}
 }
 
 func handleSlashCommand(ctx context.Context, ag plugin.AgentHandle, line string) bool {
