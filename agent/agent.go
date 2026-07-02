@@ -188,6 +188,9 @@ func (a *Agent) ResumeSession(ctx context.Context, id string) error {
 		})
 	}
 	a.rebuildProjection()
+	if a.permission != nil {
+		a.permission.ClearSessionRules()
+	}
 	return a.maybeCompact(ctx, false, "")
 }
 
@@ -202,7 +205,13 @@ func (a *Agent) CompactSession(ctx context.Context, customInstructions string) e
 }
 
 func (a *Agent) ResetSession(ctx context.Context) error {
-	return a.InitNewSession(ctx)
+	if err := a.InitNewSession(ctx); err != nil {
+		return err
+	}
+	if a.permission != nil {
+		a.permission.ClearSessionRules()
+	}
+	return nil
 }
 
 func (a *Agent) SetSessionName(ctx context.Context, name string) error {
@@ -265,6 +274,7 @@ func (a *Agent) maybeCompact(ctx context.Context, force bool, customInstructions
 		Model:              a.model,
 		Force:              force,
 		CustomInstructions: customInstructions,
+		SessionID:          a.sessionID,
 	})
 	if err != nil {
 		return fmt.Errorf("compact: %w", err)
@@ -344,6 +354,7 @@ func (a *Agent) runLoop(ctx context.Context, maxTurns int, onStream func(types.S
 			MaxTokens:    8096,
 			OnStream:     onStream,
 			PromptCache:  a.promptCache,
+			SessionID:    a.sessionID,
 		})
 		if err != nil {
 			return "", fmt.Errorf("llm call: %w", err)

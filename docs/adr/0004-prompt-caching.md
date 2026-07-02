@@ -17,6 +17,7 @@ Add **`PromptCacheConfig` on `types.CompleteRequest`** and have providers apply 
 - Agent forwards config on every `Complete` call without changing loop logic
 - Anthropic: `MessageNewParams.CacheControl`
 - OpenRouter: `ChatRequest.CacheControl`
+- OpenRouter: `ChatRequest.SessionID` from agent session UUID (sticky routing + observability grouping)
 
 Top-level automatic caching places a breakpoint at the last cacheable block and advances as the conversation grows — suited to multi-step tool loops without manual breakpoint management.
 
@@ -34,7 +35,7 @@ Implementation:
 | Top-level automatic `cache_control` | **Chosen** — minimal code, auto-advancing breakpoint |
 | Explicit breakpoints (system, tools, messages) | Complex: 4-breakpoint limit, 20-block lookback, TTL ordering |
 | Provider-internal always-on | Hides control, harder to debug |
-| OpenRouter `session_id` sticky routing | Out of scope v1 |
+| OpenRouter `session_id` sticky routing | Implemented — agent forwards local session UUID on OpenRouter requests |
 | `CompleteResponse.Usage` cache stats | Deferred — roadmap item Cost / token tracking |
 
 ## Consequences

@@ -131,6 +131,7 @@ func (c *Compactor) summarize(ctx context.Context, req compaction.Request, msgs 
 		},
 		Model:     req.Model,
 		MaxTokens: 4096,
+		SessionID: req.SessionID,
 	})
 	if err != nil {
 		return "", err

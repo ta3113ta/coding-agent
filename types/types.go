@@ -46,6 +46,7 @@ type CompleteRequest struct {
 	MaxTokens    int
 	OnStream     func(StreamEvent) // nil = non-streaming
 	PromptCache  PromptCacheConfig
+	SessionID    string // optional; OpenRouter uses for sticky routing and observability grouping
 }
 
 type CompleteResponse struct {

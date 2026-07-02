@@ -108,11 +108,11 @@ Then try prompts such as:
 
 The REPL streams assistant text token-by-token instead of waiting for the full response — see [ADR-0003](docs/adr/0003-streaming-llm-responses.md).
 
-Prompt caching reuses stable prefixes (system prompt, tools, growing history) across tool-loop iterations — see [ADR-0004](docs/adr/0004-prompt-caching.md).
+Prompt caching reuses stable prefixes (system prompt, tools, growing history) across tool-loop iterations — see [ADR-0004](docs/adr/0004-prompt-caching.md). With OpenRouter, the local session UUID is also sent as `session_id` for sticky routing and request grouping.
 
 Sessions auto-save after each turn. Resume with `-c`, `-r`, `--resume <id>`, or REPL commands `/new`, `/sessions`, `/resume <id>`, `/session`, `/name <name>`, `/compact [instructions]`. Use `--no-session` for ephemeral mode — see [ADR-0005](docs/adr/0005-session-management.md).
 
-Permission hooks run before each tool dispatch — script rules from `.coding-agent/hooks.json` plus interactive REPL approval for risky tools — see [ADR-0006](docs/adr/0006-permission-hooks.md).
+Permission hooks run before each tool dispatch — script rules from `.coding-agent/hooks.json` plus interactive REPL approval for `run_bash` and `task` (`[y]es` / `[a]lways` / `[A]ll` / `[n]o`; file edits auto-allow in agent mode) — see [ADR-0006](docs/adr/0006-permission-hooks.md).
 
 Context compaction auto-summarizes older history when the projected context exceeds `contextWindow - reserveTokens`; use `/compact` or `/compact focus on API changes` to force compaction — see [ADR-0007](docs/adr/0007-context-compaction.md).
 

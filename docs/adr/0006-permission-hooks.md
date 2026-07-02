@@ -13,7 +13,7 @@ Add a **permission hook chain** invoked in the agent loop before `registry.Dispa
 
 1. **Core contract** — [`permission/permission.go`](../../permission/permission.go): `Hook`, `Chain`, `ToolUseRequest`, `Result` with decisions `Allow`, `Deny`, `Ask`
 2. **Script plugin** — [`plugins/permission/script/`](../../plugins/permission/script/): load `.coding-agent/hooks.json`, run `preToolUse` command hooks with JSON stdin/stdout (Cursor-compatible subset)
-3. **Interactive plugin** — [`plugins/permission/interactive/`](../../plugins/permission/interactive/): REPL y/n prompt for risky tools when the chain reaches `Ask` or no prior hook decided
+3. **Interactive plugin** — [`plugins/permission/interactive/`](../../plugins/permission/interactive/): REPL prompt for `run_bash` and `task` (and script `ask` hints) with session-scoped remember options; file edits auto-allow in agent mode (plan mode still blocks writes at the agent loop)
 
 **Chain semantics:**
 
@@ -28,6 +28,23 @@ Hook errors fail closed (Deny). Optional `updated_input` from script hooks rewri
 **Registration order:** script → interactive (policy first, user confirmation last).
 
 **Config:** `PERMISSION_ENABLED` (default `true`), `PERMISSION_HOOKS_FILE` (default `.coding-agent/hooks.json`), `--no-permission` disables all hooks.
+
+**Interactive defaults (Cursor-like):**
+
+| Tool category | Agent mode | Plan mode |
+|---------------|------------|-----------|
+| Read/search (`read_file`, `grep`, `glob`, `list_dir`) | auto-allow | auto-allow |
+| File edits (`write_file`, `str_replace`) | auto-allow | blocked by plan guard (no prompt) |
+| Shell / sub-agents (`run_bash`, `task`) | prompt with remember | prompt with remember |
+
+REPL prompt: `Allow? [y]es / [a]lways this tool / [A]ll tools / [n]o`
+
+- `y` — allow once
+- `a` — remember this tool for the current chat session
+- `A` — remember all gated tools for the session (script hooks still run)
+- `n` — deny
+
+Session allow rules live in [`permission.SessionRules`](../../permission/session_rules.go) on the chain; cleared on `/new` or `/resume`, not on sub-agent `InitNewSession`.
 
 ## Alternatives Considered
 
@@ -97,6 +114,7 @@ Hook stdout:
 ## v2 (deferred)
 
 - `postToolUse`, `beforeShellExecution`, MCP events
-- Session-persistent "always allow" rules
+- Persist allow rules in session JSON across resume
+- Per-command allow patterns for `run_bash`
 - Prompt-type hooks (`type: "prompt"`)
 - Injectable `Prompter` on `AgentHandle` for HTTP/non-REPL runners

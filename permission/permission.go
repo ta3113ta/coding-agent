@@ -33,10 +33,28 @@ type Hook interface {
 
 type Chain struct {
 	hooks []Hook
+	rules *SessionRules
 }
 
 func NewChain(hooks ...Hook) *Chain {
-	return &Chain{hooks: hooks}
+	return &Chain{
+		hooks: hooks,
+		rules: NewSessionRules(),
+	}
+}
+
+func (c *Chain) SessionRules() *SessionRules {
+	if c == nil {
+		return nil
+	}
+	return c.rules
+}
+
+func (c *Chain) ClearSessionRules() {
+	if c == nil {
+		return
+	}
+	c.rules.Clear()
 }
 
 func (c *Chain) Register(h Hook) {

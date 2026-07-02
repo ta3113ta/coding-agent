@@ -14,32 +14,36 @@ import (
 )
 
 var autoAllowTools = map[string]bool{
-	"read_file": true,
-	"list_dir":  true,
-	"grep":      true,
-	"glob":      true,
+	"read_file":   true,
+	"list_dir":    true,
+	"grep":        true,
+	"glob":        true,
+	"write_file":  true,
+	"str_replace": true,
 }
 
 var gatedTools = map[string]bool{
-	"run_bash":    true,
-	"write_file":  true,
-	"str_replace": true,
-	"task":        true,
+	"run_bash": true,
+	"task":     true,
 }
 
 type Hook struct {
-	in  io.Reader
-	out io.Writer
+	in    io.Reader
+	out   io.Writer
+	rules *permission.SessionRules
 }
 
-func NewHook(in io.Reader, out io.Writer) *Hook {
+func NewHook(in io.Reader, out io.Writer, rules *permission.SessionRules) *Hook {
 	if in == nil {
 		in = os.Stdin
 	}
 	if out == nil {
 		out = os.Stdout
 	}
-	return &Hook{in: in, out: out}
+	if rules == nil {
+		rules = permission.NewSessionRules()
+	}
+	return &Hook{in: in, out: out, rules: rules}
 }
 
 func (h *Hook) BeforeToolUse(ctx context.Context, req permission.ToolUseRequest) (permission.Result, error) {
@@ -53,20 +57,41 @@ func (h *Hook) BeforeToolUse(ctx context.Context, req permission.ToolUseRequest)
 		return permission.Result{Decision: permission.Allow}, nil
 	}
 
-	approved, err := h.prompt(req)
+	if h.rules.Allows(req.ToolName) {
+		return permission.Result{Decision: permission.Allow}, nil
+	}
+
+	choice, err := h.prompt(req)
 	if err != nil {
 		return permission.Result{}, err
 	}
-	if approved {
+	switch choice {
+	case choiceOnce:
 		return permission.Result{Decision: permission.Allow}, nil
+	case choiceAlwaysTool:
+		h.rules.AllowTool(req.ToolName)
+		return permission.Result{Decision: permission.Allow}, nil
+	case choiceAlwaysAll:
+		h.rules.AllowAll()
+		return permission.Result{Decision: permission.Allow}, nil
+	default:
+		return permission.Result{
+			Decision: permission.Deny,
+			Message:  fmt.Sprintf("user denied %s", req.ToolName),
+		}, nil
 	}
-	return permission.Result{
-		Decision: permission.Deny,
-		Message:  fmt.Sprintf("user denied %s", req.ToolName),
-	}, nil
 }
 
-func (h *Hook) prompt(req permission.ToolUseRequest) (bool, error) {
+type promptChoice int
+
+const (
+	choiceDeny promptChoice = iota
+	choiceOnce
+	choiceAlwaysTool
+	choiceAlwaysAll
+)
+
+func (h *Hook) prompt(req permission.ToolUseRequest) (promptChoice, error) {
 	fmt.Fprintf(h.out, "\n⚠️  Tool permission: %s\n", req.ToolName)
 	if req.AskHint != "" {
 		fmt.Fprintf(h.out, "    %s\n", req.AskHint)
@@ -74,18 +99,22 @@ func (h *Hook) prompt(req permission.ToolUseRequest) (bool, error) {
 	if len(req.Input) > 0 {
 		fmt.Fprintf(h.out, "    input: %s\n", summarizeInput(req.Input))
 	}
-	fmt.Fprint(h.out, "Allow? [y/N]: ")
+	fmt.Fprint(h.out, "Allow? [y]es / [a]lways this tool / [A]ll tools / [n]o: ")
 
 	reader := bufio.NewReader(h.in)
 	line, err := reader.ReadString('\n')
 	if err != nil {
-		return false, err
+		return choiceDeny, err
 	}
-	switch strings.ToLower(strings.TrimSpace(line)) {
-	case "y", "yes":
-		return true, nil
+	switch strings.TrimSpace(line) {
+	case "y", "yes", "Y", "Yes":
+		return choiceOnce, nil
+	case "a", "always":
+		return choiceAlwaysTool, nil
+	case "A":
+		return choiceAlwaysAll, nil
 	default:
-		return false, nil
+		return choiceDeny, nil
 	}
 }
 
@@ -105,7 +134,11 @@ func (Plugin) Register(app *plugin.App) error {
 	if !app.Config.PermissionEnabled {
 		return nil
 	}
-	plugin.RegisterPermissionHook(app, NewHook(os.Stdin, os.Stdout))
+	if app.Permission == nil {
+		app.Permission = permission.NewChain()
+	}
+	hook := NewHook(os.Stdin, os.Stdout, app.Permission.SessionRules())
+	plugin.RegisterPermissionHook(app, hook)
 	return nil
 }
 

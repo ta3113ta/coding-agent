@@ -41,6 +41,7 @@ func (p *provider) Complete(ctx context.Context, req types.CompleteRequest) (*ty
 		Tools:     toOpenRouterTools(req.Tools),
 	}
 	applyPromptCache(&chatReq, req.PromptCache)
+	applySessionID(&chatReq, req.SessionID)
 
 	if req.OnStream == nil {
 		chatReq.Stream = openrouter.Pointer(false)
@@ -62,6 +63,17 @@ func applyPromptCache(chatReq *components.ChatRequest, cfg types.PromptCacheConf
 		directive.TTL = components.AnthropicCacheControlTTLOneh.ToPointer()
 	}
 	chatReq.CacheControl = directive
+}
+
+func applySessionID(chatReq *components.ChatRequest, sessionID string) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return
+	}
+	if len(sessionID) > 256 {
+		sessionID = sessionID[:256]
+	}
+	chatReq.SessionID = openrouter.Pointer(sessionID)
 }
 
 func buildOpenRouterMessages(req types.CompleteRequest) []components.ChatMessages {

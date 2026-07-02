@@ -15,6 +15,7 @@ type Request struct {
 	ContextWindow      int
 	Force              bool
 	CustomInstructions string
+	SessionID          string
 }
 
 type Result struct {
