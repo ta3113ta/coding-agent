@@ -93,6 +93,10 @@ The parent agent calls the `task` tool to spawn a sub-agent synchronously — th
 
 Plan mode restricts tools to read-only research; `create_plan` saves a draft for `/approve` (switches to agent mode; optional trailing text runs implementation). `/plan [task]` enters plan mode or plans in one shot. `todo_write` tracks in-session tasks persisted in session JSON — see [ADR-0010](docs/adr/0010-plan-mode-todo-tracking.md)
 
+## Parallel tool execution
+
+When an assistant turn has multiple tool calls, permission preflight runs sequentially, then allowed tools dispatch concurrently; archive messages preserve original call order — see [ADR-0011](docs/adr/0011-parallel-tool-execution.md)
+
 ## Architecture Decision Records
 
 New features that affect architecture (tool contract, agent loop, bootstrap flow, discovery model, etc.) must have an ADR in `docs/adr/` before implementation.
@@ -140,7 +144,7 @@ main.go
       3. Providers registered in llm registry
       4. Prompts concatenated
       5. llm.NewProvider(cfg) resolves active provider
-  → agent.New(provider, tools, model, prompt, cache, verbose, sessionStore, providerName, app.Permission, app.Compactor, app.PlanState, cfg.PlanEnabled)
+  → agent.New(provider, tools, model, prompt, cache, verbose, sessionStore, providerName, app.Permission, app.Compactor, app.PlanState, cfg.PlanEnabled, cfg.ParallelToolsEnabled)
   → app.Runner.Run(ctx, agent)
 ```
 

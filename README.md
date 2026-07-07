@@ -99,6 +99,8 @@ go run . --provider openrouter --model openai/gpt-4o
 | `PLAN_ENABLED` | `true` | Enable plan mode and todo tracking (`false` to disable) |
 | `--no-plan` | — | Disable plan mode and todo tracking |
 | `--plan` | — | Start in plan mode (read-only research) |
+| `PARALLEL_TOOLS_ENABLED` | `true` | Run multiple tool calls from one assistant turn concurrently (`false` to disable) |
+| `--no-parallel-tools` | — | Disable parallel tool execution |
 
 CLI flags override env values.
 
@@ -118,13 +120,15 @@ Context compaction auto-summarizes older history when the projected context exce
 
 Plan mode restricts the agent to read-only tools until you `/approve` a draft plan (optionally with `/approve <instructions>` to implement immediately). Use `/plan` or `/plan <task>` to research and draft a plan; the REPL prompt shows `you (plan)>` in plan mode — see [ADR-0010](docs/adr/0010-plan-mode-todo-tracking.md).
 
+When the LLM returns multiple tool calls in one turn, permission checks run sequentially (so interactive prompts stay predictable), then allowed tools dispatch in parallel; results are appended in call order — see [ADR-0011](docs/adr/0011-parallel-tool-execution.md).
+
 ## Agent loop core (agent/agent.go)
 
 ```
 loop:
   1. Call provider.Complete with messages + tool definitions
   2. Append assistant response (text + tool calls) to history
-  3. If tool calls exist → permission hooks → run tools → append results as role=tool messages
+  3. If tool calls exist → permission hooks (sequential) → run tools (parallel when N>1) → append results as role=tool messages
   4. No tool calls → done, return text
   5. Send tool results back into history → loop again
 ```
@@ -146,12 +150,12 @@ loop:
 - Sub-agents / task spawning — [ADR-0008](docs/adr/0008-sub-agent-task-spawning.md)
 - Grep + Glob internal search — [ADR-0009](docs/adr/0009-grep-glob-internal-search.md)
 - Plan mode + todo tracking — [ADR-0010](docs/adr/0010-plan-mode-todo-tracking.md)
+- Parallel tool execution — [ADR-0011](docs/adr/0011-parallel-tool-execution.md)
 
 ## Road map
 
 - **External search: web fetch + web search**
 - **Thinking level / reasoning tokens**
-- **Parallel tool execution**
 - **More tools: see ./tools.md**
 - **Custom model, provider management**, eg. auth.json, /login, /logout
 - **Error recovery / retry policy**

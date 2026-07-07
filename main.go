@@ -40,6 +40,7 @@ func main() {
 	noCompactionFlag := flag.Bool("no-compaction", false, "Disable context compaction")
 	noSpawnFlag := flag.Bool("no-spawn", false, "Disable sub-agent task spawning")
 	noPlanFlag := flag.Bool("no-plan", false, "Disable plan mode and todo tracking")
+	noParallelToolsFlag := flag.Bool("no-parallel-tools", false, "Disable parallel tool execution")
 	planFlag := flag.Bool("plan", false, "Start in plan mode (read-only research)")
 	nameFlag := flag.String("name", "", "Set session display name at startup")
 	flag.Parse()
@@ -66,6 +67,7 @@ func main() {
 	cfg.ApplyCompactionFlags(*noCompactionFlag)
 	cfg.ApplySpawnFlags(*noSpawnFlag)
 	cfg.ApplyPlanFlags(*noPlanFlag)
+	cfg.ApplyParallelToolsFlags(*noParallelToolsFlag)
 
 	if flags.startInPlan && !cfg.PlanEnabled {
 		fmt.Fprintln(os.Stderr, "--plan cannot be used with --no-plan")
@@ -102,6 +104,7 @@ func main() {
 		app.Compactor,
 		app.PlanState,
 		cfg.PlanEnabled,
+		cfg.ParallelToolsEnabled,
 	)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

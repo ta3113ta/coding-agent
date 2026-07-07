@@ -128,7 +128,7 @@ func newTestAgentWithPermission(t *testing.T, provider *fakeStreamProvider, perm
 func newTestAgentWithOptions(t *testing.T, provider *fakeStreamProvider, perm *permission.Chain, compactor compaction.Compactor) (*Agent, *memStore) {
 	t.Helper()
 	store := newMemStore()
-	ag, err := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", perm, compactor, plan.NewSessionState(), false)
+	ag, err := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", perm, compactor, plan.NewSessionState(), false, true)
 	require.NoError(t, err)
 	require.NoError(t, ag.InitNewSession(context.Background()))
 	return ag, store
@@ -219,7 +219,7 @@ func TestSetSessionName(t *testing.T) {
 func TestInitNewSession(t *testing.T) {
 	provider := &fakeStreamProvider{text: "ok"}
 	store := newMemStore()
-	ag, err := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", nil, nil, plan.NewSessionState(), false)
+	ag, err := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", nil, nil, plan.NewSessionState(), false, true)
 	require.NoError(t, err)
 	require.Empty(t, ag.CurrentSessionID())
 	require.NoError(t, ag.InitNewSession(context.Background()))
@@ -260,7 +260,7 @@ func TestRun_PermissionDenied(t *testing.T) {
 	reg.Register(&stubTool{onExecute: func() { executed = true }})
 
 	store := newMemStore()
-	ag, err := New(provider, reg, "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", perm, nil, plan.NewSessionState(), false)
+	ag, err := New(provider, reg, "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", perm, nil, plan.NewSessionState(), false, true)
 	require.NoError(t, err)
 	require.NoError(t, ag.InitNewSession(context.Background()))
 
@@ -398,7 +398,7 @@ func TestRunSubtask_IsolatedFromParentArchive(t *testing.T) {
 	parentLen := len(ag.archive)
 
 	childStore := newMemStore()
-	child, err := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, childStore, "anthropic", nil, nil, plan.NewSessionState(), false)
+	child, err := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, childStore, "anthropic", nil, nil, plan.NewSessionState(), false, true)
 	require.NoError(t, err)
 	require.NoError(t, child.InitNewSession(context.Background()))
 	_, err = child.RunSubtask(context.Background(), "child task", 0)
@@ -430,8 +430,106 @@ func (stubReadTool) Execute(ctx context.Context, input json.RawMessage) (string,
 func newTestAgentWithRegistry(t *testing.T, provider *loopingProvider, reg *tools.Registry) (*Agent, *memStore) {
 	t.Helper()
 	store := newMemStore()
-	ag, err := New(provider, reg, "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", nil, nil, plan.NewSessionState(), false)
+	ag, err := New(provider, reg, "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", nil, nil, plan.NewSessionState(), false, true)
 	require.NoError(t, err)
 	require.NoError(t, ag.InitNewSession(context.Background()))
 	return ag, store
+}
+
+type parallelDualToolProvider struct {
+	calls int
+}
+
+func (p *parallelDualToolProvider) Complete(ctx context.Context, req types.CompleteRequest) (*types.CompleteResponse, error) {
+	_ = ctx
+	_ = req
+	p.calls++
+	if p.calls == 1 {
+		return &types.CompleteResponse{
+			ToolCalls: []types.ToolCall{
+				{ID: "tc_slow", Name: "tool_slow", Input: json.RawMessage(`{}`)},
+				{ID: "tc_fast", Name: "tool_fast", Input: json.RawMessage(`{}`)},
+			},
+		}, nil
+	}
+	return &types.CompleteResponse{Text: "done"}, nil
+}
+
+type timedStubTool struct {
+	name  string
+	delay time.Duration
+	order *[]string
+	mu    *sync.Mutex
+}
+
+func (t timedStubTool) Name() string { return t.name }
+
+func (t timedStubTool) Definition() types.ToolDefinition {
+	return types.ToolDefinition{Name: t.name}
+}
+
+func (t timedStubTool) Execute(ctx context.Context, input json.RawMessage) (string, error) {
+	_ = ctx
+	_ = input
+	time.Sleep(t.delay)
+	t.mu.Lock()
+	*t.order = append(*t.order, t.name)
+	t.mu.Unlock()
+	return t.name + " ok", nil
+}
+
+func TestRun_ParallelToolCalls(t *testing.T) {
+	provider := &parallelDualToolProvider{}
+	var finishOrder []string
+	var orderMu sync.Mutex
+
+	reg := tools.NewRegistry(
+		timedStubTool{name: "tool_slow", delay: 50 * time.Millisecond, order: &finishOrder, mu: &orderMu},
+		timedStubTool{name: "tool_fast", delay: 10 * time.Millisecond, order: &finishOrder, mu: &orderMu},
+	)
+
+	store := newMemStore()
+	ag, err := New(provider, reg, "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", nil, nil, plan.NewSessionState(), false, true)
+	require.NoError(t, err)
+	require.NoError(t, ag.InitNewSession(context.Background()))
+
+	answer, err := ag.Run(context.Background(), "run both", nil)
+	require.NoError(t, err)
+	require.Equal(t, "done", answer)
+	require.Equal(t, []string{"tool_fast", "tool_slow"}, finishOrder)
+
+	s, err := store.Get(context.Background(), ag.CurrentSessionID())
+	require.NoError(t, err)
+
+	var toolMsgs []types.Message
+	for _, m := range s.Messages {
+		if m.Role == "tool" {
+			toolMsgs = append(toolMsgs, m)
+		}
+	}
+	require.Len(t, toolMsgs, 2)
+	require.Equal(t, "tc_slow", toolMsgs[0].ToolCallID)
+	require.Equal(t, "tool_slow ok", toolMsgs[0].Content)
+	require.Equal(t, "tc_fast", toolMsgs[1].ToolCallID)
+	require.Equal(t, "tool_fast ok", toolMsgs[1].Content)
+}
+
+func TestRun_ParallelToolCalls_Disabled(t *testing.T) {
+	provider := &parallelDualToolProvider{}
+	var finishOrder []string
+	var orderMu sync.Mutex
+
+	reg := tools.NewRegistry(
+		timedStubTool{name: "tool_slow", delay: 50 * time.Millisecond, order: &finishOrder, mu: &orderMu},
+		timedStubTool{name: "tool_fast", delay: 10 * time.Millisecond, order: &finishOrder, mu: &orderMu},
+	)
+
+	store := newMemStore()
+	ag, err := New(provider, reg, "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", nil, nil, plan.NewSessionState(), false, false)
+	require.NoError(t, err)
+	require.NoError(t, ag.InitNewSession(context.Background()))
+
+	_, err = ag.Run(context.Background(), "run both", nil)
+	require.NoError(t, err)
+	require.Equal(t, []string{"tool_slow", "tool_fast"}, finishOrder)
 }

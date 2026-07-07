@@ -51,6 +51,7 @@ type Config struct {
 	SpawnEnabled               bool
 	SpawnMaxTurns              int
 	PlanEnabled                bool
+	ParallelToolsEnabled       bool
 }
 
 func LoadFromEnv() Config {
@@ -89,6 +90,7 @@ func LoadFromEnv() Config {
 		SpawnEnabled:               parseBoolEnv("SPAWN_ENABLED", true),
 		SpawnMaxTurns:              parseIntEnv("SPAWN_MAX_TURNS", defaultSpawnMaxTurns),
 		PlanEnabled:                parseBoolEnv("PLAN_ENABLED", true),
+		ParallelToolsEnabled:       parseBoolEnv("PARALLEL_TOOLS_ENABLED", true),
 	}
 }
 
@@ -168,6 +170,12 @@ func (c *Config) ApplyCompactionFlags(noCompaction bool) {
 func (c *Config) ApplyPermissionFlags(noPermission bool) {
 	if noPermission {
 		c.PermissionEnabled = false
+	}
+}
+
+func (c *Config) ApplyParallelToolsFlags(noParallel bool) {
+	if noParallel {
+		c.ParallelToolsEnabled = false
 	}
 }
 

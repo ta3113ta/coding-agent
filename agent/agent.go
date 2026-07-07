@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -13,6 +14,8 @@ import (
 	"coding-agent/session"
 	"coding-agent/tools"
 	"coding-agent/types"
+
+	"golang.org/x/sync/errgroup"
 )
 
 type Agent struct {
@@ -33,6 +36,7 @@ type Agent struct {
 	compactor    compaction.Compactor
 	planState    *plan.SessionState
 	planEnabled  bool
+	parallelTools bool
 }
 
 var (
@@ -42,23 +46,24 @@ var (
 	errPlanStateUnavailable = errors.New("plan state unavailable")
 )
 
-func New(provider llm.Provider, registry *tools.Registry, model, systemPrompt string, promptCache types.PromptCacheConfig, verbose bool, store session.Store, providerName string, perm *permission.Chain, compactor compaction.Compactor, planState *plan.SessionState, planEnabled bool) (*Agent, error) {
+func New(provider llm.Provider, registry *tools.Registry, model, systemPrompt string, promptCache types.PromptCacheConfig, verbose bool, store session.Store, providerName string, perm *permission.Chain, compactor compaction.Compactor, planState *plan.SessionState, planEnabled bool, parallelTools bool) (*Agent, error) {
 	if store == nil {
 		return nil, errSessionStoreRequired
 	}
 	return &Agent{
-		provider:     provider,
-		registry:     registry,
-		model:        model,
-		systemPrompt: systemPrompt,
-		promptCache:  promptCache,
-		verbose:      verbose,
-		store:        store,
-		providerName: providerName,
-		permission:   perm,
-		compactor:    compactor,
-		planState:    planState,
-		planEnabled:  planEnabled,
+		provider:      provider,
+		registry:      registry,
+		model:         model,
+		systemPrompt:  systemPrompt,
+		promptCache:   promptCache,
+		verbose:       verbose,
+		store:         store,
+		providerName:  providerName,
+		permission:    perm,
+		compactor:     compactor,
+		planState:     planState,
+		planEnabled:   planEnabled,
+		parallelTools: parallelTools,
 	}, nil
 }
 
@@ -395,69 +400,117 @@ func (a *Agent) runLoop(ctx context.Context, maxTurns int, onStream func(types.S
 			fmt.Printf("\n💭 %s\n", resp.Text)
 		}
 
-		for _, tc := range resp.ToolCalls {
-			if a.verbose {
-				fmt.Printf("🔧 %s(%s)\n", tc.Name, string(tc.Input))
-			}
+		a.appendArchive(a.executeToolCalls(ctx, resp.ToolCalls)...)
+	}
+}
 
-			if a.planEnabled && a.planState != nil && a.planState.Mode() == plan.ModePlan && !plan.IsAllowedInPlanMode(tc.Name) {
-				a.appendArchive(types.Message{
+type toolExecJob struct {
+	index int
+	name  string
+	input json.RawMessage
+	id    string
+}
+
+func (a *Agent) executeToolCalls(ctx context.Context, calls []types.ToolCall) []types.Message {
+	if len(calls) == 0 {
+		return nil
+	}
+
+	results := make([]types.Message, len(calls))
+	var jobs []toolExecJob
+
+	for i, tc := range calls {
+		if a.verbose {
+			fmt.Printf("🔧 %s(%s)\n", tc.Name, string(tc.Input))
+		}
+
+		if a.planEnabled && a.planState != nil && a.planState.Mode() == plan.ModePlan && !plan.IsAllowedInPlanMode(tc.Name) {
+			results[i] = types.Message{
+				Role:       "tool",
+				Content:    fmt.Sprintf("error: tool %q is not allowed in plan mode", tc.Name),
+				ToolCallID: tc.ID,
+				IsError:    true,
+			}
+			continue
+		}
+
+		input := tc.Input
+		if a.permission != nil && !a.permission.Empty() {
+			permRes, err := a.permission.Evaluate(ctx, permission.ToolUseRequest{
+				ToolName:   tc.Name,
+				Input:      tc.Input,
+				ToolCallID: tc.ID,
+			})
+			if err != nil {
+				results[i] = types.Message{
 					Role:       "tool",
-					Content:    fmt.Sprintf("error: tool %q is not allowed in plan mode", tc.Name),
+					Content:    fmt.Sprintf("error: permission check failed: %v", err),
 					ToolCallID: tc.ID,
 					IsError:    true,
-				})
+				}
 				continue
 			}
-
-			input := tc.Input
-			if a.permission != nil && !a.permission.Empty() {
-				permRes, err := a.permission.Evaluate(ctx, permission.ToolUseRequest{
-					ToolName:   tc.Name,
-					Input:      tc.Input,
+			if permRes.Decision == permission.Deny {
+				msg := permRes.Message
+				if msg == "" {
+					msg = "permission denied"
+				}
+				results[i] = types.Message{
+					Role:       "tool",
+					Content:    fmt.Sprintf("error: %s", msg),
 					ToolCallID: tc.ID,
-				})
-				if err != nil {
-					a.appendArchive(types.Message{
-						Role:       "tool",
-						Content:    fmt.Sprintf("error: permission check failed: %v", err),
-						ToolCallID: tc.ID,
-						IsError:    true,
-					})
-					continue
+					IsError:    true,
 				}
-				if permRes.Decision == permission.Deny {
-					msg := permRes.Message
-					if msg == "" {
-						msg = "permission denied"
-					}
-					a.appendArchive(types.Message{
-						Role:       "tool",
-						Content:    fmt.Sprintf("error: %s", msg),
-						ToolCallID: tc.ID,
-						IsError:    true,
-					})
-					continue
-				}
-				if permRes.UpdatedInput != nil {
-					input = permRes.UpdatedInput
-				}
+				continue
 			}
-
-			result, err := a.registry.Dispatch(ctx, tc.Name, input)
-			isError := false
-			if err != nil {
-				result = fmt.Sprintf("error: %v", err)
-				isError = true
+			if permRes.UpdatedInput != nil {
+				input = permRes.UpdatedInput
 			}
-
-			a.appendArchive(types.Message{
-				Role:       "tool",
-				Content:    result,
-				ToolCallID: tc.ID,
-				IsError:    isError,
-			})
 		}
+
+		jobs = append(jobs, toolExecJob{
+			index: i,
+			name:  tc.Name,
+			input: input,
+			id:    tc.ID,
+		})
+	}
+
+	if len(jobs) == 0 {
+		return results
+	}
+
+	if len(jobs) == 1 || !a.parallelTools {
+		for _, job := range jobs {
+			results[job.index] = a.dispatchToolResult(ctx, job.name, job.input, job.id)
+		}
+		return results
+	}
+
+	g, gctx := errgroup.WithContext(ctx)
+	for _, job := range jobs {
+		g.Go(func() error {
+			results[job.index] = a.dispatchToolResult(gctx, job.name, job.input, job.id)
+			return nil
+		})
+	}
+	_ = g.Wait()
+
+	return results
+}
+
+func (a *Agent) dispatchToolResult(ctx context.Context, name string, input json.RawMessage, toolCallID string) types.Message {
+	result, err := a.registry.Dispatch(ctx, name, input)
+	isError := false
+	if err != nil {
+		result = fmt.Sprintf("error: %v", err)
+		isError = true
+	}
+	return types.Message{
+		Role:       "tool",
+		Content:    result,
+		ToolCallID: toolCallID,
+		IsError:    isError,
 	}
 }
 

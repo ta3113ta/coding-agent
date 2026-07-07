@@ -61,6 +61,7 @@ func (r *Runner) Run(ctx context.Context, req spawn.Request) (spawn.Result, erro
 		nil,
 		nil,
 		false,
+		true,
 	)
 	if err != nil {
 		return spawn.Result{}, fmt.Errorf("child agent: %w", err)
