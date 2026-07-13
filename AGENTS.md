@@ -23,6 +23,7 @@ This project uses a **minimal core + compile-time plugins** design. The core def
 | [`compaction/`](../compaction/compaction.go) | Context compaction contract |
 | [`spawn/`](../spawn/spawn.go) | Sub-agent spawning contract |
 | [`plan/`](../plan/) | Plan mode + todo tracking types and session state |
+| [`retry/`](../retry/retry.go) | LLM retry policy (`Do`, transient errors, backoff) |
 | [`plugin/`](../plugin/) | Plugin interfaces + `Bootstrap()` |
 
 **Rule:** If it talks to an external API, runs shell commands, or defines a persona — it is a plugin, not core.
@@ -97,6 +98,10 @@ Plan mode restricts tools to read-only research; `create_plan` saves a draft for
 
 When an assistant turn has multiple tool calls, permission preflight runs sequentially, then allowed tools dispatch concurrently; archive messages preserve original call order — see [ADR-0011](docs/adr/0011-parallel-tool-execution.md)
 
+## Error recovery / retry policy
+
+Before giving up on a turn, the agent retries transient `provider.Complete` failures (429/5xx/network/empty response) with exponential backoff; SDK retries are disabled so one policy applies — see [ADR-0012](docs/adr/0012-error-recovery-retry-policy.md)
+
 ## Architecture Decision Records
 
 New features that affect architecture (tool contract, agent loop, bootstrap flow, discovery model, etc.) must have an ADR in `docs/adr/` before implementation.
@@ -144,7 +149,7 @@ main.go
       3. Providers registered in llm registry
       4. Prompts concatenated
       5. llm.NewProvider(cfg) resolves active provider
-  → agent.New(provider, tools, model, prompt, cache, verbose, sessionStore, providerName, app.Permission, app.Compactor, app.PlanState, cfg.PlanEnabled, cfg.ParallelToolsEnabled)
+  → agent.New(provider, tools, model, prompt, cache, verbose, sessionStore, providerName, app.Permission, app.Compactor, app.PlanState, cfg.PlanEnabled, cfg.ParallelToolsEnabled, cfg.RetryPolicy())
   → app.Runner.Run(ctx, agent)
 ```
 

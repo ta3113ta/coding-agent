@@ -105,6 +105,7 @@ func main() {
 		app.PlanState,
 		cfg.PlanEnabled,
 		cfg.ParallelToolsEnabled,
+		cfg.RetryPolicy(),
 	)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

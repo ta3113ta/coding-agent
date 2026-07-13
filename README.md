@@ -101,6 +101,9 @@ go run . --provider openrouter --model openai/gpt-4o
 | `--plan` | — | Start in plan mode (read-only research) |
 | `PARALLEL_TOOLS_ENABLED` | `true` | Run multiple tool calls from one assistant turn concurrently (`false` to disable) |
 | `--no-parallel-tools` | — | Disable parallel tool execution |
+| `LLM_RETRY_MAX_ATTEMPTS` | `3` | Total `provider.Complete` attempts per turn (including the first) |
+| `LLM_RETRY_INITIAL_BACKOFF` | `1s` | Initial wait before the first retry (Go duration, e.g. `500ms`, `2s`) |
+| `LLM_RETRY_MAX_BACKOFF` | `30s` | Cap on exponential backoff between retries |
 
 CLI flags override env values.
 
@@ -121,6 +124,8 @@ Context compaction auto-summarizes older history when the projected context exce
 Plan mode restricts the agent to read-only tools until you `/approve` a draft plan (optionally with `/approve <instructions>` to implement immediately). Use `/plan` or `/plan <task>` to research and draft a plan; the REPL prompt shows `you (plan)>` in plan mode — see [ADR-0010](docs/adr/0010-plan-mode-todo-tracking.md).
 
 When the LLM returns multiple tool calls in one turn, permission checks run sequentially (so interactive prompts stay predictable), then allowed tools dispatch in parallel; results are appended in call order — see [ADR-0011](docs/adr/0011-parallel-tool-execution.md).
+
+Transient LLM failures (rate limits, 5xx, network, empty responses) are retried with exponential backoff under a single agent policy — see [ADR-0012](docs/adr/0012-error-recovery-retry-policy.md).
 
 ## Agent loop core (agent/agent.go)
 
@@ -151,6 +156,7 @@ loop:
 - Grep + Glob internal search — [ADR-0009](docs/adr/0009-grep-glob-internal-search.md)
 - Plan mode + todo tracking — [ADR-0010](docs/adr/0010-plan-mode-todo-tracking.md)
 - Parallel tool execution — [ADR-0011](docs/adr/0011-parallel-tool-execution.md)
+- Error recovery / retry policy — [ADR-0012](docs/adr/0012-error-recovery-retry-policy.md)
 
 ## Road map
 
@@ -158,7 +164,6 @@ loop:
 - **Thinking level / reasoning tokens**
 - **More tools: see ./tools.md**
 - **Custom model, provider management**, eg. auth.json, /login, /logout
-- **Error recovery / retry policy**
 - **Diff preview before apply**
 - **Codebase indexing + vector db**
 - **LSP integration**

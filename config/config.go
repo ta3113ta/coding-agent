@@ -6,7 +6,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
+	"coding-agent/retry"
 	"coding-agent/types"
 )
 
@@ -29,6 +31,9 @@ const (
 	defaultCompactionKeepRecentTokens = 20000
 	defaultCompactionContextWindow    = 200000
 	defaultSpawnMaxTurns              = 25
+	defaultLLMRetryMaxAttempts        = 3
+	defaultLLMRetryInitialBackoff     = time.Second
+	defaultLLMRetryMaxBackoff         = 30 * time.Second
 )
 
 type Config struct {
@@ -52,6 +57,9 @@ type Config struct {
 	SpawnMaxTurns              int
 	PlanEnabled                bool
 	ParallelToolsEnabled       bool
+	LLMRetryMaxAttempts        int
+	LLMRetryInitialBackoff     time.Duration
+	LLMRetryMaxBackoff         time.Duration
 }
 
 func LoadFromEnv() Config {
@@ -91,6 +99,9 @@ func LoadFromEnv() Config {
 		SpawnMaxTurns:              parseIntEnv("SPAWN_MAX_TURNS", defaultSpawnMaxTurns),
 		PlanEnabled:                parseBoolEnv("PLAN_ENABLED", true),
 		ParallelToolsEnabled:       parseBoolEnv("PARALLEL_TOOLS_ENABLED", true),
+		LLMRetryMaxAttempts:        parseIntEnv("LLM_RETRY_MAX_ATTEMPTS", defaultLLMRetryMaxAttempts),
+		LLMRetryInitialBackoff:     parseDurationEnv("LLM_RETRY_INITIAL_BACKOFF", defaultLLMRetryInitialBackoff),
+		LLMRetryMaxBackoff:         parseDurationEnv("LLM_RETRY_MAX_BACKOFF", defaultLLMRetryMaxBackoff),
 	}
 }
 
@@ -139,6 +150,18 @@ func parseIntEnv(key string, defaultVal int) int {
 		return defaultVal
 	}
 	return n
+}
+
+func parseDurationEnv(key string, defaultVal time.Duration) time.Duration {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return defaultVal
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil || d <= 0 {
+		return defaultVal
+	}
+	return d
 }
 
 func parsePermissionHooksFile(raw string) string {
@@ -244,7 +267,27 @@ func (c Config) Validate() error {
 	if c.SpawnMaxTurns <= 0 {
 		return fmt.Errorf("SPAWN_MAX_TURNS must be positive")
 	}
+	if c.LLMRetryMaxAttempts <= 0 {
+		return fmt.Errorf("LLM_RETRY_MAX_ATTEMPTS must be positive")
+	}
+	if c.LLMRetryInitialBackoff <= 0 {
+		return fmt.Errorf("LLM_RETRY_INITIAL_BACKOFF must be positive")
+	}
+	if c.LLMRetryMaxBackoff <= 0 {
+		return fmt.Errorf("LLM_RETRY_MAX_BACKOFF must be positive")
+	}
+	if c.LLMRetryMaxBackoff < c.LLMRetryInitialBackoff {
+		return fmt.Errorf("LLM_RETRY_MAX_BACKOFF must be >= LLM_RETRY_INITIAL_BACKOFF")
+	}
 	return nil
+}
+
+func (c Config) RetryPolicy() retry.Policy {
+	return retry.Policy{
+		MaxAttempts:    c.LLMRetryMaxAttempts,
+		InitialBackoff: c.LLMRetryInitialBackoff,
+		MaxBackoff:     c.LLMRetryMaxBackoff,
+	}
 }
 
 func (c Config) SessionDirPath(cwd string) (string, error) {

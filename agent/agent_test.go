@@ -11,6 +11,7 @@ import (
 	"coding-agent/compaction"
 	"coding-agent/permission"
 	"coding-agent/plan"
+	"coding-agent/retry"
 	"coding-agent/session"
 	"coding-agent/tools"
 	"coding-agent/types"
@@ -128,7 +129,7 @@ func newTestAgentWithPermission(t *testing.T, provider *fakeStreamProvider, perm
 func newTestAgentWithOptions(t *testing.T, provider *fakeStreamProvider, perm *permission.Chain, compactor compaction.Compactor) (*Agent, *memStore) {
 	t.Helper()
 	store := newMemStore()
-	ag, err := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", perm, compactor, plan.NewSessionState(), false, true)
+	ag, err := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", perm, compactor, plan.NewSessionState(), false, true, retry.Policy{MaxAttempts: 1})
 	require.NoError(t, err)
 	require.NoError(t, ag.InitNewSession(context.Background()))
 	return ag, store
@@ -160,6 +161,121 @@ func TestRun_NilStreamCallback(t *testing.T) {
 	answer, err := ag.Run(context.Background(), "hi", nil)
 	require.NoError(t, err)
 	require.Equal(t, "done", answer)
+}
+
+type sequenceProvider struct {
+	mu    sync.Mutex
+	calls int
+	fns   []func() (*types.CompleteResponse, error)
+}
+
+func (p *sequenceProvider) Complete(ctx context.Context, req types.CompleteRequest) (*types.CompleteResponse, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	i := p.calls
+	p.calls++
+	if i >= len(p.fns) {
+		return nil, fmt.Errorf("unexpected call %d", i)
+	}
+	return p.fns[i]()
+}
+
+func TestRun_RetriesEmptyResponse(t *testing.T) {
+	prov := &sequenceProvider{
+		fns: []func() (*types.CompleteResponse, error){
+			func() (*types.CompleteResponse, error) {
+				return &types.CompleteResponse{}, nil
+			},
+			func() (*types.CompleteResponse, error) {
+				return &types.CompleteResponse{Text: "recovered"}, nil
+			},
+		},
+	}
+	store := newMemStore()
+	ag, err := New(prov, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", nil, nil, plan.NewSessionState(), false, true, retry.Policy{
+		MaxAttempts:    3,
+		InitialBackoff: time.Millisecond,
+		MaxBackoff:     5 * time.Millisecond,
+	})
+	require.NoError(t, err)
+	require.NoError(t, ag.InitNewSession(context.Background()))
+
+	answer, err := ag.Run(context.Background(), "hi", nil)
+	require.NoError(t, err)
+	require.Equal(t, "recovered", answer)
+	require.Equal(t, 2, prov.calls)
+}
+
+func TestRun_RetriesTransientProviderError(t *testing.T) {
+	prov := &sequenceProvider{
+		fns: []func() (*types.CompleteResponse, error){
+			func() (*types.CompleteResponse, error) {
+				return nil, retry.Transient(fmt.Errorf("429 rate limit"))
+			},
+			func() (*types.CompleteResponse, error) {
+				return &types.CompleteResponse{Text: "ok"}, nil
+			},
+		},
+	}
+	store := newMemStore()
+	ag, err := New(prov, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", nil, nil, plan.NewSessionState(), false, true, retry.Policy{
+		MaxAttempts:    3,
+		InitialBackoff: time.Millisecond,
+		MaxBackoff:     5 * time.Millisecond,
+	})
+	require.NoError(t, err)
+	require.NoError(t, ag.InitNewSession(context.Background()))
+
+	answer, err := ag.Run(context.Background(), "hi", nil)
+	require.NoError(t, err)
+	require.Equal(t, "ok", answer)
+	require.Equal(t, 2, prov.calls)
+}
+
+func TestRun_PermanentErrorNoRetry(t *testing.T) {
+	prov := &sequenceProvider{
+		fns: []func() (*types.CompleteResponse, error){
+			func() (*types.CompleteResponse, error) {
+				return nil, fmt.Errorf("401 unauthorized")
+			},
+		},
+	}
+	store := newMemStore()
+	ag, err := New(prov, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", nil, nil, plan.NewSessionState(), false, true, retry.Policy{
+		MaxAttempts:    5,
+		InitialBackoff: time.Millisecond,
+		MaxBackoff:     time.Millisecond,
+	})
+	require.NoError(t, err)
+	require.NoError(t, ag.InitNewSession(context.Background()))
+
+	_, err = ag.Run(context.Background(), "hi", nil)
+	require.Error(t, err)
+	require.Equal(t, 1, prov.calls)
+}
+
+func TestRun_CanceledContextNotRetried(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	prov := &sequenceProvider{
+		fns: []func() (*types.CompleteResponse, error){
+			func() (*types.CompleteResponse, error) {
+				cancel()
+				return nil, context.Canceled
+			},
+		},
+	}
+	store := newMemStore()
+	ag, err := New(prov, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", nil, nil, plan.NewSessionState(), false, true, retry.Policy{
+		MaxAttempts:    5,
+		InitialBackoff: time.Millisecond,
+		MaxBackoff:     time.Millisecond,
+	})
+	require.NoError(t, err)
+	require.NoError(t, ag.InitNewSession(context.Background()))
+
+	_, err = ag.Run(ctx, "hi", nil)
+	require.Error(t, err)
+	require.Equal(t, 1, prov.calls)
 }
 
 func TestRun_AutoSave(t *testing.T) {
@@ -219,7 +335,7 @@ func TestSetSessionName(t *testing.T) {
 func TestInitNewSession(t *testing.T) {
 	provider := &fakeStreamProvider{text: "ok"}
 	store := newMemStore()
-	ag, err := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", nil, nil, plan.NewSessionState(), false, true)
+	ag, err := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", nil, nil, plan.NewSessionState(), false, true, retry.Policy{MaxAttempts: 1})
 	require.NoError(t, err)
 	require.Empty(t, ag.CurrentSessionID())
 	require.NoError(t, ag.InitNewSession(context.Background()))
@@ -260,7 +376,7 @@ func TestRun_PermissionDenied(t *testing.T) {
 	reg.Register(&stubTool{onExecute: func() { executed = true }})
 
 	store := newMemStore()
-	ag, err := New(provider, reg, "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", perm, nil, plan.NewSessionState(), false, true)
+	ag, err := New(provider, reg, "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", perm, nil, plan.NewSessionState(), false, true, retry.Policy{MaxAttempts: 1})
 	require.NoError(t, err)
 	require.NoError(t, ag.InitNewSession(context.Background()))
 
@@ -398,7 +514,7 @@ func TestRunSubtask_IsolatedFromParentArchive(t *testing.T) {
 	parentLen := len(ag.archive)
 
 	childStore := newMemStore()
-	child, err := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, childStore, "anthropic", nil, nil, plan.NewSessionState(), false, true)
+	child, err := New(provider, tools.NewRegistry(), "test-model", "system", types.PromptCacheConfig{}, false, childStore, "anthropic", nil, nil, plan.NewSessionState(), false, true, retry.Policy{MaxAttempts: 1})
 	require.NoError(t, err)
 	require.NoError(t, child.InitNewSession(context.Background()))
 	_, err = child.RunSubtask(context.Background(), "child task", 0)
@@ -430,7 +546,7 @@ func (stubReadTool) Execute(ctx context.Context, input json.RawMessage) (string,
 func newTestAgentWithRegistry(t *testing.T, provider *loopingProvider, reg *tools.Registry) (*Agent, *memStore) {
 	t.Helper()
 	store := newMemStore()
-	ag, err := New(provider, reg, "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", nil, nil, plan.NewSessionState(), false, true)
+	ag, err := New(provider, reg, "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", nil, nil, plan.NewSessionState(), false, true, retry.Policy{MaxAttempts: 1})
 	require.NoError(t, err)
 	require.NoError(t, ag.InitNewSession(context.Background()))
 	return ag, store
@@ -489,7 +605,7 @@ func TestRun_ParallelToolCalls(t *testing.T) {
 	)
 
 	store := newMemStore()
-	ag, err := New(provider, reg, "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", nil, nil, plan.NewSessionState(), false, true)
+	ag, err := New(provider, reg, "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", nil, nil, plan.NewSessionState(), false, true, retry.Policy{MaxAttempts: 1})
 	require.NoError(t, err)
 	require.NoError(t, ag.InitNewSession(context.Background()))
 
@@ -525,7 +641,7 @@ func TestRun_ParallelToolCalls_Disabled(t *testing.T) {
 	)
 
 	store := newMemStore()
-	ag, err := New(provider, reg, "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", nil, nil, plan.NewSessionState(), false, false)
+	ag, err := New(provider, reg, "test-model", "system", types.PromptCacheConfig{}, false, store, "anthropic", nil, nil, plan.NewSessionState(), false, false, retry.Policy{MaxAttempts: 1})
 	require.NoError(t, err)
 	require.NoError(t, ag.InitNewSession(context.Background()))
 

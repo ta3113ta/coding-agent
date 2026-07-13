@@ -3,7 +3,9 @@ package openrouter
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -11,11 +13,14 @@ import (
 	openrouter "github.com/OpenRouterTeam/go-sdk"
 	"github.com/OpenRouterTeam/go-sdk/models/components"
 	"github.com/OpenRouterTeam/go-sdk/models/operations"
+	"github.com/OpenRouterTeam/go-sdk/models/sdkerrors"
 	"github.com/OpenRouterTeam/go-sdk/optionalnullable"
+	sdkretry "github.com/OpenRouterTeam/go-sdk/retry"
 
 	"coding-agent/config"
 	"coding-agent/llm"
 	"coding-agent/plugin"
+	"coding-agent/retry"
 	"coding-agent/types"
 )
 
@@ -26,10 +31,12 @@ type provider struct {
 func newProvider(cfg config.Config) (llm.Provider, error) {
 	// No SDK per-request context timeout: Send() defers cancel() on return, which
 	// breaks SSE reads. Use a long HTTP client timeout for queue + stream instead.
+	// Agent owns retry policy — disable SDK backoff.
 	return &provider{
 		client: openrouter.New(
 			openrouter.WithSecurity(cfg.OpenRouterAPIKey),
 			openrouter.WithClient(&http.Client{Timeout: 3 * time.Minute}),
+			openrouter.WithRetryConfig(sdkretry.Config{Strategy: "none"}),
 		),
 	}, nil
 }
@@ -96,16 +103,16 @@ func buildOpenRouterMessages(req types.CompleteRequest) []components.ChatMessage
 func (p *provider) completeNonStreaming(ctx context.Context, chatReq components.ChatRequest) (*types.CompleteResponse, error) {
 	res, err := p.client.Chat.Send(ctx, chatReq)
 	if err != nil {
-		return nil, fmt.Errorf("openrouter: %w", err)
+		return nil, wrapErr(err)
 	}
 
 	if res.Type != operations.SendChatCompletionRequestResponseTypeChatResult || res.ChatResult == nil {
-		return nil, fmt.Errorf("openrouter: unexpected response type")
+		return nil, errors.New("openrouter: unexpected response type")
 	}
 
 	choices := res.ChatResult.GetChoices()
 	if len(choices) == 0 {
-		return nil, fmt.Errorf("openrouter: no choices in response")
+		return nil, errors.New("openrouter: no choices in response")
 	}
 
 	msg := choices[0].GetMessage()
@@ -125,7 +132,7 @@ func (p *provider) completeNonStreaming(ctx context.Context, chatReq components.
 		})
 	}
 	if strings.TrimSpace(out.Text) == "" && len(out.ToolCalls) == 0 {
-		return nil, fmt.Errorf("openrouter: model returned empty response")
+		return nil, retry.Transient(errors.New("openrouter: model returned empty response"))
 	}
 	return out, nil
 }
@@ -139,11 +146,11 @@ type openRouterToolCallAcc struct {
 func (p *provider) completeStreaming(ctx context.Context, req types.CompleteRequest, chatReq components.ChatRequest) (*types.CompleteResponse, error) {
 	res, err := p.client.Chat.Send(ctx, chatReq)
 	if err != nil {
-		return nil, fmt.Errorf("openrouter: %w", err)
+		return nil, wrapErr(err)
 	}
 
 	if res.Type != operations.SendChatCompletionRequestResponseTypeEventStream || res.EventStream == nil {
-		return nil, fmt.Errorf("openrouter: expected event stream")
+		return nil, errors.New("openrouter: expected event stream")
 	}
 	defer res.EventStream.Close()
 
@@ -157,7 +164,12 @@ func (p *provider) completeStreaming(ctx context.Context, req types.CompleteRequ
 		}
 		data := chunk.GetData()
 		if streamErr := data.GetError(); streamErr != nil {
-			return nil, fmt.Errorf("openrouter: %s (code %d)", streamErr.GetMessage(), streamErr.GetCode())
+			code := int(streamErr.GetCode())
+			err := fmt.Errorf("openrouter: %s (code %d)", streamErr.GetMessage(), code)
+			if retry.HTTPStatusTransient(code) {
+				return nil, retry.Transient(err)
+			}
+			return nil, err
 		}
 		for _, choice := range (&data).GetChoices() {
 			delta := choice.GetDelta()
@@ -190,7 +202,7 @@ func (p *provider) completeStreaming(ctx context.Context, req types.CompleteRequ
 		}
 	}
 	if err := res.EventStream.Err(); err != nil {
-		return nil, fmt.Errorf("openrouter stream: %w", err)
+		return nil, wrapErr(fmt.Errorf("stream: %w", err))
 	}
 
 	for _, acc := range toolCalls {
@@ -204,9 +216,55 @@ func (p *provider) completeStreaming(ctx context.Context, req types.CompleteRequ
 		})
 	}
 	if strings.TrimSpace(out.Text) == "" && len(out.ToolCalls) == 0 {
-		return nil, fmt.Errorf("openrouter: model returned empty response")
+		return nil, retry.Transient(errors.New("openrouter: model returned empty response"))
 	}
 	return out, nil
+}
+
+func wrapErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	wrapped := fmt.Errorf("openrouter: %w", err)
+	if errors.Is(err, context.Canceled) {
+		return wrapped
+	}
+	if after, ok := openRouterTransient(err); ok {
+		return retry.Transient(wrapped, after)
+	}
+	return wrapped
+}
+
+func openRouterTransient(err error) (time.Duration, bool) {
+	var apiErr *sdkerrors.APIError
+	if errors.As(err, &apiErr) {
+		if !retry.HTTPStatusTransient(apiErr.StatusCode) {
+			return 0, false
+		}
+		var after time.Duration
+		if apiErr.RawResponse != nil {
+			after = retry.ParseRetryAfterHeader(apiErr.RawResponse.Header)
+		}
+		return after, true
+	}
+
+	switch {
+	case errors.As(err, new(*sdkerrors.TooManyRequestsResponseError)),
+		errors.As(err, new(*sdkerrors.RequestTimeoutResponseError)),
+		errors.As(err, new(*sdkerrors.ConflictResponseError)),
+		errors.As(err, new(*sdkerrors.InternalServerResponseError)),
+		errors.As(err, new(*sdkerrors.BadGatewayResponseError)),
+		errors.As(err, new(*sdkerrors.ServiceUnavailableResponseError)),
+		errors.As(err, new(*sdkerrors.ProviderOverloadedResponseError)),
+		errors.As(err, new(*sdkerrors.EdgeNetworkTimeoutResponseError)):
+		return 0, true
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return 0, true
+	}
+	return 0, false
 }
 
 func toOpenRouterTools(tools []types.ToolDefinition) []components.ChatFunctionTool {

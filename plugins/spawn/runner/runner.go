@@ -10,6 +10,7 @@ import (
 	"coding-agent/permission"
 	"coding-agent/plugin"
 	"coding-agent/plugins/session/memory"
+	"coding-agent/retry"
 	"coding-agent/spawn"
 	"coding-agent/tools"
 	"coding-agent/types"
@@ -24,6 +25,7 @@ type Runner struct {
 	tools        *tools.Registry
 	permission   *permission.Chain
 	maxTurns     int
+	retryPolicy  retry.Policy
 }
 
 func (r *Runner) Run(ctx context.Context, req spawn.Request) (spawn.Result, error) {
@@ -62,6 +64,7 @@ func (r *Runner) Run(ctx context.Context, req spawn.Request) (spawn.Result, erro
 		nil,
 		false,
 		true,
+		r.retryPolicy,
 	)
 	if err != nil {
 		return spawn.Result{}, fmt.Errorf("child agent: %w", err)
@@ -104,6 +107,7 @@ func (Plugin) Register(app *plugin.App) error {
 		tools:        app.Tools,
 		permission:   app.Permission,
 		maxTurns:     app.Config.SpawnMaxTurns,
+		retryPolicy:  app.Config.RetryPolicy(),
 	})
 	return nil
 }

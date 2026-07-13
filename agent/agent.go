@@ -5,12 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
+	"time"
 
 	"coding-agent/compaction"
 	"coding-agent/llm"
 	"coding-agent/permission"
 	"coding-agent/plan"
+	"coding-agent/retry"
 	"coding-agent/session"
 	"coding-agent/tools"
 	"coding-agent/types"
@@ -34,9 +37,10 @@ type Agent struct {
 	providerName string
 	permission   *permission.Chain
 	compactor    compaction.Compactor
-	planState    *plan.SessionState
-	planEnabled  bool
+	planState     *plan.SessionState
+	planEnabled   bool
 	parallelTools bool
+	retryPolicy   retry.Policy
 }
 
 var (
@@ -46,9 +50,12 @@ var (
 	errPlanStateUnavailable = errors.New("plan state unavailable")
 )
 
-func New(provider llm.Provider, registry *tools.Registry, model, systemPrompt string, promptCache types.PromptCacheConfig, verbose bool, store session.Store, providerName string, perm *permission.Chain, compactor compaction.Compactor, planState *plan.SessionState, planEnabled bool, parallelTools bool) (*Agent, error) {
+func New(provider llm.Provider, registry *tools.Registry, model, systemPrompt string, promptCache types.PromptCacheConfig, verbose bool, store session.Store, providerName string, perm *permission.Chain, compactor compaction.Compactor, planState *plan.SessionState, planEnabled bool, parallelTools bool, retryPolicy retry.Policy) (*Agent, error) {
 	if store == nil {
 		return nil, errSessionStoreRequired
+	}
+	if retryPolicy.MaxAttempts <= 0 {
+		retryPolicy = retry.DefaultPolicy()
 	}
 	return &Agent{
 		provider:      provider,
@@ -64,6 +71,7 @@ func New(provider llm.Provider, registry *tools.Registry, model, systemPrompt st
 		planState:     planState,
 		planEnabled:   planEnabled,
 		parallelTools: parallelTools,
+		retryPolicy:   retryPolicy,
 	}, nil
 }
 
@@ -351,11 +359,8 @@ func (a *Agent) runLoop(ctx context.Context, maxTurns int, onStream func(types.S
 			return "", err
 		}
 
-		const maxEmptyRetries = 2
-		var resp *types.CompleteResponse
-		var err error
-		for attempt := 0; attempt <= maxEmptyRetries; attempt++ {
-			resp, err = a.provider.Complete(ctx, types.CompleteRequest{
+		resp, err := retry.Do(ctx, a.retryPolicy, func() (*types.CompleteResponse, error) {
+			r, err := a.provider.Complete(ctx, types.CompleteRequest{
 				SystemPrompt: a.effectiveSystemPrompt(),
 				Messages:     a.messages,
 				Tools:        a.toolDefinitions(),
@@ -366,20 +371,13 @@ func (a *Agent) runLoop(ctx context.Context, maxTurns int, onStream func(types.S
 				SessionID:    a.sessionID,
 			})
 			if err != nil {
-				if attempt < maxEmptyRetries && isRetryableLLMError(err) {
-					continue
-				}
-				break
+				return nil, err
 			}
-			if strings.TrimSpace(resp.Text) != "" || len(resp.ToolCalls) > 0 {
-				break
+			if strings.TrimSpace(r.Text) == "" && len(r.ToolCalls) == 0 {
+				return nil, retry.Transient(errors.New("model returned empty response"))
 			}
-			err = errors.New("llm call: model returned empty response")
-			if attempt < maxEmptyRetries {
-				continue
-			}
-		}
-
+			return r, nil
+		}, a.onLLMRetry)
 		if err != nil {
 			return "", fmt.Errorf("llm call: %w", err)
 		}
@@ -514,15 +512,9 @@ func (a *Agent) dispatchToolResult(ctx context.Context, name string, input json.
 	}
 }
 
-func isRetryableLLMError(err error) bool {
-	if err == nil {
-		return false
+func (a *Agent) onLLMRetry(attempt, maxAttempts int, wait time.Duration, err error) {
+	if !a.verbose {
+		return
 	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return true
-	}
-	msg := err.Error()
-	return strings.Contains(msg, "empty response") ||
-		strings.Contains(msg, "context canceled") ||
-		strings.Contains(msg, "deadline exceeded")
+	fmt.Fprintf(os.Stderr, "retrying LLM call (attempt %d/%d) after %s: %v\n", attempt, maxAttempts, wait.Round(time.Millisecond), err)
 }

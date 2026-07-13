@@ -2,7 +2,10 @@ package anthropic
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -10,6 +13,7 @@ import (
 	"coding-agent/config"
 	"coding-agent/llm"
 	"coding-agent/plugin"
+	"coding-agent/retry"
 	"coding-agent/types"
 )
 
@@ -19,7 +23,10 @@ type provider struct {
 
 func newProvider(cfg config.Config) (llm.Provider, error) {
 	return &provider{
-		client: anthropic.NewClient(option.WithAPIKey(cfg.AnthropicAPIKey)),
+		client: anthropic.NewClient(
+			option.WithAPIKey(cfg.AnthropicAPIKey),
+			option.WithMaxRetries(0), // agent owns retry policy
+		),
 	}, nil
 }
 
@@ -34,7 +41,7 @@ func (p *provider) Complete(ctx context.Context, req types.CompleteRequest) (*ty
 	if req.OnStream == nil {
 		resp, err := p.client.Messages.New(ctx, params)
 		if err != nil {
-			return nil, fmt.Errorf("anthropic: %w", err)
+			return nil, wrapErr(err)
 		}
 		return anthropicMessageToResponse(resp), nil
 	}
@@ -46,7 +53,7 @@ func (p *provider) Complete(ctx context.Context, req types.CompleteRequest) (*ty
 	for stream.Next() {
 		event := stream.Current()
 		if err := msg.Accumulate(event); err != nil {
-			return nil, fmt.Errorf("anthropic accumulate: %w", err)
+			return nil, wrapErr(fmt.Errorf("accumulate: %w", err))
 		}
 		if delta, ok := event.AsAny().(anthropic.ContentBlockDeltaEvent); ok {
 			if td, ok := delta.Delta.AsAny().(anthropic.TextDelta); ok && td.Text != "" {
@@ -55,9 +62,32 @@ func (p *provider) Complete(ctx context.Context, req types.CompleteRequest) (*ty
 		}
 	}
 	if err := stream.Err(); err != nil {
-		return nil, fmt.Errorf("anthropic: %w", err)
+		return nil, wrapErr(err)
 	}
 	return anthropicMessageToResponse(&msg), nil
+}
+
+func wrapErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	wrapped := fmt.Errorf("anthropic: %w", err)
+	if errors.Is(err, context.Canceled) {
+		return wrapped
+	}
+	var apiErr *anthropic.Error
+	if errors.As(err, &apiErr) && retry.HTTPStatusTransient(apiErr.StatusCode) {
+		var after time.Duration
+		if apiErr.Response != nil {
+			after = retry.ParseRetryAfterHeader(apiErr.Response.Header)
+		}
+		return retry.Transient(wrapped, after)
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return retry.Transient(wrapped)
+	}
+	return wrapped
 }
 
 func buildMessageParams(req types.CompleteRequest, maxTokens int) anthropic.MessageNewParams {
